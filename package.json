@@ -1,0 +1,34 @@
+{
+  "name": "cuadro",
+  "version": "0.1.0",
+  "description": "Make videos in code with spark: a frame signal, a page, Chromium and ffmpeg",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./render": {
+      "types": "./src/render.d.ts",
+      "default": "./src/render.js"
+    }
+  },
+  "bin": {
+    "cuadro": "bin/cuadro.js"
+  },
+  "files": [
+    "src",
+    "bin"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "playwright-core": "1.56.0",
+    "spark": "github:ldiaz94/spark#v0.1.1"
+  }
+}
