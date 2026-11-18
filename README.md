@@ -101,6 +101,48 @@ npx cuadro render video.html out.mp4 --props '{"color":"teal"}' --audio song.mp3
 Progress goes to stderr: one line that updates in a terminal, or about
 ten lines when the output goes to a log.
 
+### Narration
+
+`cuadro voice` turns a script into one audio file per line, so the visuals
+can follow the voice. The script is a list of lines; each `id` is unique
+and made of letters, digits, `-` or `_`:
+
+```json
+{ "lines": [
+  { "id": "hook", "text": "Stop the endless job search." },
+  { "id": "stats", "text": "Referrals get people hired nine times more often." } ] }
+```
+
+```sh
+ELEVENLABS_API_KEY=... npx cuadro voice script.json --provider elevenlabs --voice <id> --out voice
+```
+
+This writes `voice/<id>.<ext>` for each line and `voice/voice.json`, a
+list of `{ id, file, seconds, hash }` (lengths come from ffprobe). A line is
+spoken again only when its text, provider, voice or model changes, so
+editing one line costs one request. Options: `--provider` (required),
+`--voice`, `--model`, `--out` (default `voice`) and `--base-url`. Progress
+goes to stderr. From Node, `voice({ script, out, provider, voice, model,
+baseUrl, onLine })` in `cuadro/voice` does the same.
+
+| `--provider` | key from the environment | default model | default voice |
+|---|---|---|---|
+| `elevenlabs` | `ELEVENLABS_API_KEY` | `eleven_multilingual_v2` | `JBFqnCBsd6RMkjVDRZzb` |
+| `gemini` | `GEMINI_API_KEY` | `gemini-3.8-flash-tts` | `Kore` |
+| `openai` | `OPENAI_API_KEY` (optional for local servers); `OPENAI_BASE_URL` (default `https://api.openai.com/v1`) | `gpt-4o-mini-tts` | `alloy` |
+| `qwen` | `DASHSCOPE_API_KEY` | `qwen3-tts-flash` | `Cherry` |
+
+`openai` also talks to any compatible server (Kokoro, Piper and others):
+set `OPENAI_BASE_URL` and pick that server's model and voice. Qwen's speech
+API is not OpenAI-compatible, hence its own adapter.
+
+The page imports the list and sets each scene's length from it:
+
+```js
+import voice from './voice/voice.json' with { type: 'json' };
+const frames = voice.lines.map((l) => Math.ceil(l.seconds * 30) + 10);
+```
+
 **Rules for a deterministic video**: draw only from `frame` and `props`.
 Don't use `Date.now`, `Math.random` without a seed,
 `requestAnimationFrame`, CSS animations or transitions. Load everything
@@ -109,7 +151,7 @@ which cuadro waits for.
 
 ## How it works
 
-Six ideas, a module each:
+Seven ideas, a module each:
 
 1. **Time is a signal** ([`src/composition.js`](src/composition.js)). The
    composition owns `frame`, and everything drawn is computed from it.
@@ -149,6 +191,14 @@ Six ideas, a module each:
    muxes the mix with the video copied as it is.
    [`bin/cuadro.js`](bin/cuadro.js) parses the command line and shows
    progress.
+7. **Narration is a cache** ([`src/voice.js`](src/voice.js), with
+   [`src/speech.js`](src/speech.js) and [`src/http.js`](src/http.js)).
+   Each provider is a small `fetch` adapter that turns text into audio
+   bytes, with its key read from the environment. `post()` adds a timeout
+   and retries on 429, 5xx and network errors, and its errors quote the
+   API's message but never a header. `voice()` hashes provider, voice,
+   model and text for each line and skips the lines whose hash and file
+   are unchanged.
 
 ## Tests
 
@@ -166,6 +216,11 @@ others run in Chromium and ffmpeg against
   dispose the view's effects on exit.
 - composition: `setFrame` waits for an image that loads slowly; the
   preview's keys, scrubber and play button work.
+- narration, against a fake local server (no test calls a real API): retry
+  on 429 then success, giving up, and errors that show the API's message
+  but not the key; each provider's URL, auth header and body; Gemini's PCM
+  wrapped as a valid WAV; a missing key; lines written, voice.json correct,
+  an unchanged script making no requests, and one edited line spoken alone.
 - render: every frame comes out at the right size; the same props give
   identical frame checksums twice, and other props give different ones;
   audio is padded to the video's length; a page error or a broken image
@@ -194,8 +249,11 @@ Lines of code, not counting comments or blank lines:
 | `src/serve.js` | 32 |
 | `src/chromium.js` | 19 |
 | `src/index.js` | 5 |
-| `bin/cuadro.js` | 52 |
-| **total** | **387** |
+| `src/http.js` | 30 |
+| `src/speech.js` | 86 |
+| `src/voice.js` | 55 |
+| `bin/cuadro.js` | 82 |
+| **total** | **588** |
 
 The only dependencies are spark and playwright-core, plus ffmpeg from
 the system.

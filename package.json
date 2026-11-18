@@ -11,6 +11,10 @@
     "./render": {
       "types": "./src/render.d.ts",
       "default": "./src/render.js"
+    },
+    "./voice": {
+      "types": "./src/voice.d.ts",
+      "default": "./src/voice.js"
     }
   },
   "bin": {
