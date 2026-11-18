@@ -20,9 +20,14 @@ export function preview(stage, frame, setFrame, { width, height, fps, durationIn
   fit();
 
   const seek = (n) => { setPlaying(false); setFrame(Math.max(0, Math.min(last, n))); };
+  // Play at the last frame starts again from 0, which is set first so the clips start there too.
+  const toggle = () => {
+    if (!playing() && frame() >= last) setFrame(0);
+    setPlaying((p) => !p);
+  };
   effect(() => {
     if (!playing()) return;
-    const start = untrack(frame) >= last ? 0 : untrack(frame); // play from the end restarts
+    const start = untrack(frame);
     const t0 = performance.now();
     let id = requestAnimationFrame(function tick(now) {
       const n = start + Math.floor(((now - t0) * fps) / 1000);
@@ -34,7 +39,7 @@ export function preview(stage, frame, setFrame, { width, height, fps, durationIn
   });
   addEventListener('keydown', (e) => {
     const step = e.shiftKey ? fps : 1;
-    if (e.key === ' ') setPlaying((p) => !p);
+    if (e.key === ' ') toggle();
     else if (e.key === 'ArrowLeft') seek(frame() - step);
     else if (e.key === 'ArrowRight') seek(frame() + step);
     else return;
@@ -49,7 +54,7 @@ export function preview(stage, frame, setFrame, { width, height, fps, durationIn
   box.append(stage);
   mount(document.body, () => html`
     <div style=${{ display: 'flex', gap: '12px', alignItems: 'center', height: `${BarHeight}px`, padding: '0 12px', font: '14px system-ui', color: '#ddd' }}>
-      <button style="width:5em" @click=${() => setPlaying((p) => !p)}>${() => (playing() ? 'pause' : 'play')}</button>
+      <button style="width:5em" @click=${toggle}>${() => (playing() ? 'pause' : 'play')}</button>
       <input type="range" min="0" max=${last} style="flex:1" .value=${frame} @input=${(e) => seek(Number(e.target.value))}>
       <span style="font-variant-numeric:tabular-nums">${() => `${frame()} / ${last} · ${(frame() / fps).toFixed(2)}s`}</span>
     </div>`);

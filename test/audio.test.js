@@ -69,6 +69,9 @@ test('preview: a mounted clip is an <audio> element that seeks with the scrubber
     assert.equal(await bAt(), 0.3);
     await page.fill('input[type=range]', '25'); // b's sequence has ended
     assert.deepEqual(await names(), ['a.wav']);
+    // Play at the last frame goes to 0 before playing, in the same task, so clips start from 0 too.
+    await page.fill('input[type=range]', '29');
+    assert.equal(await page.evaluate(() => { document.querySelector('button').click(); return document.querySelector('input').value; }), '0');
     assert.deepEqual(b.errors, []);
   } finally {
     await b.close();

@@ -83,7 +83,7 @@ npx cuadro render video.html out.mp4 --props '{"color":"teal"}' --audio song.mp3
 | `composition({ width, height, fps, durationInFrames, view, props })` | Mounts `view(frame, props)` on a stage of that size. The defaults in `props` are merged with `?props=<json>` from the URL. Sets `window.cuadro`, and adds the preview bar unless the URL has `?render`. |
 | `sequence(from, duration, view)` | A view that mounts `view(local)` while `from <= frame < from + duration`, with `local = frame - from`. Outside that range it unmounts, and the view's effects are disposed. |
 | `series([duration, view], ...)` | Sequences played back to back. Use `Infinity` for a last clip that stays. |
-| `audio(src, { volume })` | A view that plays the sound file `src` from its first frame until it unmounts or the file ends. `volume` is a gain, 1 by default. Put it in a sequence to start it later. |
+| `audio(src, { volume })` | A view that plays the sound file `src` from its first frame until it unmounts or the file ends. `volume` is a gain, 1 by default. Its first frame is its sequence's frame 0: to start a sound later, give it a sequence of its own, and don't show or hide it with a condition inside a sequence. |
 | `interpolate(x, inRange, outRange, { easing, extrapolate })` | Piecewise mapping over two or more increasing stops. `extrapolate` is `'clamp'` (the default) or `'extend'`, or `{ left, right }` to set each side. |
 | `spring({ frame, fps, config, from, to })` | A damped spring, computed in closed form. `config` is `{ mass: 1, stiffness: 100, damping: 10 }` by default. It goes from `from` (0) to `to` (1). |
 | `linear`, `ease`, `easeIn`, `easeOut`, `easeInOut`, `bezier(x1, y1, x2, y2)` | CSS's easing curves. |

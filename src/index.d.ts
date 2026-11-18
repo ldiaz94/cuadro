@@ -36,7 +36,11 @@ export type View = (frame: Getter<number>) => Child;
 export function sequence(from: number, duration: number, view: View): View;
 /** Plays [duration, view] clips back to back. */
 export function series(...clips: [duration: number, view: View][]): View;
-/** A view that plays the sound file src from its first frame until it unmounts. */
+/**
+ * A view that plays the sound file src from its first frame until it unmounts. Its first frame is its
+ * sequence's local frame 0, wherever audio() appears in the view: to start a sound later, give it its own
+ * sequence, and don't show or hide it with a condition inside a sequence.
+ */
 export function audio(src: string, options?: { volume?: number }): View;
 
 /** A sound recorded by audio() when it mounted, for the renderer to mix. */

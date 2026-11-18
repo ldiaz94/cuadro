@@ -8,6 +8,11 @@
 //           never did); the clip stops there, or where the file ends
 //   volume  a gain, 1 as recorded
 //
+// The clip always plays from the start of the file, at the frame where
+// its view's local frame is 0: the start of the sequence it is in. To
+// start a sound later, give it a sequence of its own; don't show or hide
+// audio() with a condition inside a sequence, as it would still start at
+// the sequence's frame 0, not where it appears.
 // A clip mounted again at the same frame (a preview scrubbed back) is
 // recorded once. In a preview the view is also an <audio> element that
 // plays and pauses with the bar, and seeks to its local frame when you
