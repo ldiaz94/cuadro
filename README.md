@@ -164,7 +164,10 @@ The properties are `--bg`, `--ink`, `--muted`, `--surface`, `--line`,
 scale `--t-small` (28.8 px at 720p, the smallest text), `--t-body`,
 `--t-3`, `--t-2`, `--t-1`, `--t-hero` and `--t-mega`; and `--pad-x`,
 `--pad-y`, `--gap` and `--radius`. Sizes are in container units of the
-stage, so a code scene drawn with them scales like the rest.
+stage, so a code scene drawn with them scales like the rest. Inside a
+scene, `--f-body` to `--f-mega` are the same sizes as the scene fits
+them: shrunk together (never under `--t-small`) when its text would
+overflow, so a code scene that uses them fits longer languages too.
 
 | `cuadro render <page> <out.mp4>` | |
 |---|---|
