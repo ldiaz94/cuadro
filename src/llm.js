@@ -30,6 +30,13 @@ const adapters = { anthropic, gemini, openai };
 /** The most a reply may hold, in tokens; a video.js is well under it. */
 const MaxTokens = 16000;
 
+/**
+ * The most a Gemini reply may hold, in tokens: its thinking counts against the limit, and a long review
+ * at the default (high) thinking level used up 16000 and came back "incomplete" with no output. This is
+ * the API's own cap for gemini-4-hydrogen (https://aistudio.google.com/docs/thinking#token-limits).
+ */
+const GeminiMaxTokens = 65536;
+
 /** How long to wait for one reply, in milliseconds: a model that thinks is slow. */
 const Timeout = 600000;
 
@@ -89,7 +96,7 @@ async function gemini({ model, system, messages, baseUrl = 'https://generativela
       system_instruction: system,
       input: messages.map(step),
       store: false,
-      generation_config: { max_output_tokens: MaxTokens },
+      generation_config: { max_output_tokens: GeminiMaxTokens },
     }),
   });
   const json = await res.json();
