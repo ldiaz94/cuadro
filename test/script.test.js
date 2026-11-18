@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { check, lines, timing, types, Air, Hold } from '../src/script.js';
 import * as scenes from '../src/scenes.js';
 import { Fade } from '../src/scenes.js';
+import { MusicVolume } from '../src/player.js';
 import { open } from './browser.js';
 
 /** A small valid script; each test breaks one thing in a copy. */
@@ -40,6 +41,7 @@ test('check: a good script passes, and each mistake names its path', () => {
   assert.throws(broken((s) => (s.scenes[2].code = '../evil.js')), /^Error: scenes\[2\].code: expected a module path like "scenes\/name.js"$/);
   assert.throws(broken((s) => (s.scenes[2].type = 'title')), /^Error: scenes\[2\].type: unknown key; expected code, say$/);
   assert.throws(broken((s) => (s.scenes[0].say = 3)), /^Error: scenes\[0\].say: expected a non-empty string$/);
+  assert.throws(broken((s) => (s.music = 3)), /^Error: music: expected a non-empty string$/);
 });
 
 test('lines: one per say, with ids from the scene positions', () => {
@@ -93,7 +95,7 @@ test('player: lengths and audio from voice.json, and a code scene gets its line\
   t.after(() => rm(dir, { recursive: true, force: true }));
   await mkdir(join(dir, 'scenes'));
   await mkdir(join(dir, 'voice'));
-  const script = { scenes: [
+  const script = { music: 'music.wav', scenes: [
     { type: 'kinetic', props: { lines: ['One', 'Two'] }, say: 'One, two.' },
     { code: 'scenes/count.js', say: 'Counting.' },
     { type: 'endCard', props: { line: 'Bye' }, say: 'Bye.' }] };
@@ -118,8 +120,8 @@ export default ({ length, levels, say, fps }) => scene(length, () => html\`<p id
     for (const n of froms) await b.page.evaluate((n) => window.cuadro.setFrame(n), n);
     await b.page.evaluate(() => window.cuadro.setFrame(80));
     assert.equal(await b.page.textContent('#got'), `${c} 60 Counting. 30`);
-    const clips = await b.page.evaluate(() => window.cuadro.clips.map((c) => [c.src.split('/').pop(), c.from]));
-    assert.deepEqual(clips, [['scene1.wav', froms[0]], ['scene2.wav', froms[1]], ['scene3.wav', froms[2]]]);
+    const clips = await b.page.evaluate(() => window.cuadro.clips.map((c) => [c.src.split('/').pop(), c.from, c.volume]));
+    assert.deepEqual(clips, [['music.wav', 0, MusicVolume], ['scene1.wav', froms[0], 1], ['scene2.wav', froms[1], 1], ['scene3.wav', froms[2], 1]]);
     assert.deepEqual(b.errors, []);
   } finally {
     await b.close();

@@ -3,6 +3,8 @@ import type { Composition, View } from './index.js';
 
 /** Plays a scene script: fetches script.json and voice.json (null for no narration), and makes the composition. */
 export function player(options?: { script?: string; voice?: string | null; width?: number; height?: number }): Promise<Composition>;
+/** The gain of a script's music under the narration. */
+export const MusicVolume: number;
 
 /**
  * What a code scene gets. A code scene is an ES module whose default export takes a CodeScene and

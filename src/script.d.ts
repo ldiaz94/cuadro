@@ -4,10 +4,11 @@
 export type ScriptScene =
   | { type: 'title' | 'kinetic' | 'stat' | 'steps' | 'tiles' | 'endCard'; props: Record<string, unknown>; say?: string }
   | { code: string; say?: string };
-/** A video as data: a theme, a brand and the scenes in order. */
+/** A video as data: a theme, a brand, a soundtrack (a path relative to script.json) and the scenes in order. */
 export interface Script {
   theme?: 'light' | 'bold' | 'dark';
   brand?: { accent?: string; accent2?: string; logo?: string };
+  music?: string;
   scenes: ScriptScene[];
 }
 /** The parts of a voice.json that timing() reads. */

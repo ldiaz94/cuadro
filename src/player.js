@@ -3,18 +3,22 @@
 // voice/voice.json, checks the script, imports its code scenes, and plays
 // every scene in order on a themed stage, cross-fading with play(). Each
 // scene lasts as timing() says, and a narrated scene plays its line from
-// its first frame. A code scene module's default export gets
+// its first frame, and the script's music, if any, plays from frame 0
+// at MusicVolume, under the narration. A code scene module's default export gets
 // { length, levels, say, fps } and returns a view (see player.d.ts).
-// Paths in the script (code modules, the logo) are relative to script.json,
+// Paths in the script (code modules, the logo, the music) are relative to script.json,
 // and audio files to voice.json.
 // Depends on script.js, scenes.js, theme.js, audio.js and composition.js.
-// Leaves out music, captions and any scene layout beyond play()'s.
+// Leaves out captions, music fades, and any scene layout beyond play()'s.
 import { html } from 'spark';
 import { audio } from './audio.js';
 import { composition } from './composition.js';
 import * as designed from './scenes.js';
 import { check, timing } from './script.js';
 import { theme } from './theme.js';
+
+/** The music's gain: low enough that the narration stays clear over it. */
+export const MusicVolume = 0.2;
 
 /**
  * Plays the script at the URL `script` with the narration listed at `voice` (null for none; a
@@ -42,9 +46,11 @@ export async function player({ script = 'script.json', voice = 'voice/voice.json
     }
     return [length, line ? spoken(new URL(line.file, voiceUrl).href, view) : view];
   });
+  const music = source.music && audio(new URL(source.music, scriptUrl).href, { volume: MusicVolume });
+  const scenes = designed.stage(theme(source.theme, source.brand), designed.play(...clips));
   return composition({
     width, height, fps, durationInFrames: designed.playLength(...clips),
-    view: (frame) => designed.stage(theme(source.theme, source.brand), designed.play(...clips))(frame),
+    view: music ? (frame) => html`${music(frame)}${scenes(frame)}` : scenes,
   });
 }
 

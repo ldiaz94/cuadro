@@ -2,6 +2,7 @@
 // narration, and what cuadro needs to know about it before playing it.
 //
 //   { "theme": "light", "brand": { "accent", "accent2", "logo" },
+//     "music": "music.wav",
 //     "scenes": [ { "type": "stat", "props": { ... }, "say": "..." },
 //                 { "code": "scenes/twin.js", "say": "..." } ] }
 //
@@ -62,6 +63,7 @@ const CodeSeconds = 6;
 const Script = object({
   theme: optional({ type: 'string', oneOf: ThemeNames }),
   brand: optional(object({ accent: optional(Colour), accent2: optional(Colour), logo: optional(Text) })),
+  music: optional(Text),
   scenes: array({ type: 'object' }, 1),
 });
 const Designed = object({ type: { type: 'string', oneOf: Object.keys(types) }, props: { type: 'object' }, say: optional(Text) });
