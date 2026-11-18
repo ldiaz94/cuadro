@@ -311,26 +311,26 @@ others run in Chromium and ffmpeg against
 
 ## Size
 
-Lines of code, not counting comments or blank lines:
+Lines of code, not counting blank lines or comments:
 
 | module | lines |
 |---|---|
-| `src/animate.js` | 61 |
-| `src/timeline.js` | 20 |
-| `src/composition.js` | 41 |
-| `src/audio.js` | 36 |
-| `src/preview.js` | 50 |
-| `src/render.js` | 113 |
-| `src/serve.js` | 33 |
-| `src/chromium.js` | 29 |
+| `src/animate.js` | 56 |
+| `src/timeline.js` | 18 |
+| `src/composition.js` | 37 |
+| `src/audio.js` | 34 |
+| `src/preview.js` | 48 |
+| `src/render.js` | 105 |
+| `src/serve.js` | 31 |
+| `src/chromium.js` | 25 |
+| `src/http.js` | 46 |
+| `src/speech.js` | 84 |
+| `src/voice.js` | 55 |
+| `src/llm.js` | 88 |
+| `src/make.js` | 192 |
 | `src/index.js` | 5 |
-| `src/http.js` | 55 |
-| `src/speech.js` | 89 |
-| `src/voice.js` | 59 |
-| `src/llm.js` | 94 |
-| `src/make.js` | 215 |
-| `bin/cuadro.js` | 117 |
-| **total** | **1017** |
+| `bin/cuadro.js` | 114 |
+| **total** | **938** |
 
 The only dependencies are spark and playwright-core, plus ffmpeg from
 the system.
