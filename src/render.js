@@ -111,7 +111,7 @@ async function mix(video, clips, fps, duration, out) {
     return `[${i + 1}:a]aresample=${SampleRate},${cut}volume=${volume},adelay=${samples(from)}S:all=1[c${i}]`;
   });
   const inputs = clips.map((_, i) => `[c${i}]`).join('');
-  const sum = `${inputs}amix=inputs=${clips.length}:normalize=0,apad[mix]`; // padded, then cut by -t
+  const sum = `${inputs}amix=inputs=${clips.length}:normalize=0,apad=whole_dur=${duration}[mix]`; // padded to the video length; a bare apad never ends and hangs ffmpeg with -c:v copy
   await ffmpeg([
     '-loglevel', 'error', '-y', '-i', video,
     ...clips.flatMap((c) => ['-i', c.file]),
