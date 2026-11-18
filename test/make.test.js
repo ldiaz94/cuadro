@@ -295,6 +295,7 @@ test('make: the logo, brand colours, music, language, format and captions are co
   assert.match(s.requests[0].body, /720x1280 stage \(9:16, portrait/);
   const { system } = JSON.parse(s.requests[0].body);
   assert.match(system, /a code scene must fill the whole frame/);
+  assert.match(lastText(s, 0), /shown as captions along the bottom/);
   assert.match(system, /Put every string a code scene shows .* in its props/);
   assert.deepEqual(await readFile(join(out, 'logo.svg')), await readFile('test/dot.svg'));
   assert.deepEqual(await readFile(join(out, 'music.wav')), await readFile(music));

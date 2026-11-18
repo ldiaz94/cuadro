@@ -300,7 +300,7 @@ ${Object.entries(themes).map(([name, t]) => `  - ${name}: background ${t['--bg']
   things, a metaphor drawn with shapes. Make it the video's memorable moment: a full composition
   that keeps moving for its whole length and follows its narration line, not a slide of text.
 - A code scene fills the frame as the designed ones do: its main visual spans most of the width and
-  at least half the height, and its labels are var(--t-3) or larger. Plan it as three or four beats
+  at least half the height, and its labels are var(--f-3) or larger. Plan it as three or four beats
   across its length (beats(length, n) from cuadro/scenes), each adding or changing something as the
   line says it (a headline that changes, a new element arriving, a highlight moving), so it tells a
   small story. Make the narration visible: something that pulses or a waveform of bars driven by
@@ -328,7 +328,7 @@ The theme's custom properties: ${Object.keys(theme()).join(' ')}.
 
 Rules: draw only from the frame. Never use Date.now, Math.random, requestAnimationFrame, setTimeout,
 CSS animations or transitions. Use no network resources. Fonts: var(--font-display) and
-var(--font-body). Keep everything inside the frame and text at least var(--t-small).
+var(--font-body). Keep everything inside the scene's box and text at least var(--t-small).
 
 cuadro/scenes (src/scenes.d.ts):
 
@@ -365,12 +365,13 @@ function catalogue(dts) {
   return `\`\`\`ts\n${shared}\n${scenes.join('\n\n')}\n\`\`\``;
 }
 
-/** The first user message: the prompt, whether the lines will be spoken, the script fields cuadro sets, and the language. */
+/** The first user message: the prompt, whether the lines will be spoken, the script fields cuadro sets, the language, and the captions. */
 function request(prompt, narrated, given) {
   const name = given.language && new Intl.DisplayNames(['en'], { type: 'language' }).of(given.language);
   const fixed = (Object.keys(given).length
     ? `\ncuadro sets these fields itself, so keep them: ${JSON.stringify(given)}.${given.brand?.logo ? ' The endCard shows the logo.' : ''}\n`
-    : '') + (name ? `\nWrite every say line and all the text on screen in ${name} (${given.language}).\n` : '');
+    : '') + (name ? `\nWrite every say line and all the text on screen in ${name} (${given.language}).\n` : '')
+    + (given.captions ? '\nThe narration is shown as captions along the bottom; scene() keeps its children above them, so a code scene lays out inside its box and leaves the bottom free.\n' : '');
   return `Write script.json for this video:\n\n${prompt}\n\n${narrated
     ? 'It is narrated: every scene needs a say line.'
     : 'It is not narrated yet, so each scene lasts its type\'s default length; still write a say line for each scene.'}\n${fixed}`;

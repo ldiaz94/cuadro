@@ -17,7 +17,10 @@ export const MusicVolume: number;
  * scene() lays out its children in a centred column inside the frame's padding; for a freer layout,
  * place things absolutely inside a child that fills it (position: relative; flex: 1).
  * It draws inside the themed stage, so it styles with the theme's custom properties (var(--accent),
- * var(--t-2), sizes in cqmin, cqw and cqh) and may reuse the designed scenes' classes (cq-kicker,
+ * sizes in cqmin, cqw and cqh) and sizes its text with the scene's --f-body, --f-3, --f-2, --f-1,
+ * --f-hero and --f-mega: the theme's --t-* sizes, shrunk as one when the text would overflow the
+ * scene's box (which keeps clear of captions). It lays out inside that box (flex: 1; min-height: 0),
+ * never with height: 100% or padding of its own at the bottom. It may reuse the designed scenes' classes (cq-kicker,
  * cq-head, cq-display, and cq-mark with --w from 0 to 1 for its sweep). It moves for its whole
  * length, and can move to its narration with level(levels, t.frame()), or light things up as they
  * are said with word(words, t.frame(), fps). It imports only from 'cuadro', 'cuadro/scenes' and 'cuadro/level'.
