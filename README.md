@@ -503,7 +503,11 @@ Twelve ideas, a module each:
    back to a system font. `play()` overlaps the scenes by 12 frames:
    the old one fades out over the first 4, the new one fades in over
    frames 3 to 9 while its first items arrive, over a backdrop that never
-   stops. The last scene, the end card, does not fade out.
+   stops. The last scene, the end card, does not fade out. Text fits
+   any language: once the fonts are ready, each new scene shrinks its
+   type in steps (to 60%, never under `--t-small`) until nothing leaves
+   its box, measured with transforms off so every frame agrees; then a
+   box whose longest word is too wide shrinks with its like boxes.
 10. **A video is data** ([`src/script.js`](src/script.js), with
    [`src/player.js`](src/player.js)). One table lists each designed
    scene's props, limits and default length; a short checker walks
@@ -611,7 +615,10 @@ others run in Chromium and ffmpeg against
   and colours fail. Every tenth frame of the demo, in each format and
   theme, has no text under 28 px, nothing outside the frame, nothing
   clipped, and content spanning at least 60% of the height, centred
-  within 10%.
+  within 10%. Laid out still, nothing leaves its scene's padded box (so
+  nothing runs into the captions) or its parent; a German fixture,
+  [`test/long`](test/long), with captions on, passes in both formats,
+  and fails with the fit turned off.
 
 `npm run types` type-checks the declarations against
 [`test/types.ts`](test/types.ts).
@@ -624,7 +631,7 @@ Lines of code, not counting blank lines or comments, as `rloc` counts them:
 |---|---|
 | `src/animate.js` | 56 |
 | `src/timeline.js` | 18 |
-| `src/composition.js` | 37 |
+| `src/composition.js` | 39 |
 | `src/audio.js` | 34 |
 | `src/preview.js` | 48 |
 | `src/render.js` | 224 |
@@ -635,17 +642,17 @@ Lines of code, not counting blank lines or comments, as `rloc` counts them:
 | `src/voice.js` | 82 |
 | `src/timings.js` | 94 |
 | `src/llm.js` | 90 |
-| `src/make.js` | 361 |
+| `src/make.js` | 379 |
 | `src/translate.js` | 58 |
 | `src/theme.js` | 58 |
-| `src/scenes.js` | 305 |
-| `src/script.js` | 108 |
+| `src/scenes.js` | 494 |
+| `src/script.js` | 121 |
 | `src/level.js` | 12 |
 | `src/captions.js` | 81 |
-| `src/player.js` | 56 |
+| `src/player.js` | 63 |
 | `src/index.js` | 5 |
-| `bin/cuadro.js` | 186 |
-| **total** | **2107** |
+| `bin/cuadro.js` | 190 |
+| **total** | **2340** |
 
 `scenes.js` counts its stylesheet, about 150 lines of CSS. `make.js` counts its prompt, about 110 lines of text.
 
@@ -655,10 +662,8 @@ the system. Inter and Space Grotesk (Latin-1, 70 KB of woff2) ship in
 
 ## Left out
 
-- Parallel or distributed rendering, and Lambda or cloud rendering.
-  Frames are shot one at a time: on a laptop at 720p, about 25 a second
-  for a simple page and 7 for the demo, which redraws a full-screen
-  gradient on every frame.
+- Distributed rendering, and Lambda or cloud rendering. Rendering runs
+  on one machine, in at most `--workers` tabs of one Chromium.
 - Frame-exact embedded video clips, and transparent video.
 - An embeddable React player. The preview is the page itself.
 - In scenes: transitions other than cross-fades, icons, images other
