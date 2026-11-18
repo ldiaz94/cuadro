@@ -29,7 +29,7 @@
     "bin"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=20.6"
   },
   "scripts": {
     "test": "node --test test/*.test.js",

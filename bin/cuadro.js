@@ -16,7 +16,8 @@ import { voice } from '../src/voice.js';
 
 const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audio file] [--root dir]
        cuadro voice <script.json> --provider p [--voice v] [--model m] [--out dir] [--base-url url]
-       cuadro make "<prompt>" --provider p [--model m] [--out dir] [--rounds n] [--voice-provider p --voice v]
+       cuadro make "<prompt>" --provider p [--model m] [--out dir] [--rounds n] [--base-url url]
+                   [--voice-provider p [--voice v]]
 
   --props json   props merged over the composition's defaults
   --audio file   soundtrack, cut or padded to the video's length
@@ -33,6 +34,7 @@ const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audi
   --model m      the provider's model (default: the provider's own)
   --out dir      the output folder, under the working directory (default: make-out)
   --rounds n     revisions after the first draft, at most (default: 3)
+  --base-url u   the provider's API address, to use another server
   --voice-provider p, --voice v   narrate it, with a voice provider above
 
   API keys come from ELEVENLABS_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY
@@ -111,9 +113,10 @@ async function runMake() {
   if (!values.provider) fail('make needs --provider');
   const rounds = Number(values.rounds ?? 3);
   if (!Number.isInteger(rounds) || rounds < 0) fail('--rounds must be a whole number');
+  if (values.voice && !values['voice-provider']) fail('make takes --voice only with --voice-provider');
   try {
     const { page } = await make({
-      prompt: positionals[1], provider: values.provider, model: values.model, out: values.out, rounds,
+      prompt: positionals[1], provider: values.provider, model: values.model, baseUrl: values['base-url'], out: values.out, rounds,
       voiceProvider: values['voice-provider'], voice: values.voice, onStep: (m) => console.error(m),
     });
     console.error(`preview: serve this folder (npx serve . or python3 -m http.server) and open /${relative('.', page)}`);
