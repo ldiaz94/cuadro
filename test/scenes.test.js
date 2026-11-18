@@ -36,16 +36,46 @@ test('theme: a brand accent gets text that reads on it; bad names and colours fa
   assert.throws(() => theme('light', { accent: 'red' }), /#rrggbb/);
 });
 
-/** At every 10th frame of the demo, what breaks the scenes' rules in each fully shown scene. */
+/**
+ * At every 10th frame of a video, what breaks the scenes' rules in each fully shown scene. Laid out
+ * still (transforms off), nothing in a scene's flow may leave its padded box, which keeps clear of
+ * the captions' band, nor its parent's box, nor hold a line too wide for it (inline boxes aside).
+ */
 async function problems(page) {
   return page.evaluate(async () => {
     const found = new Set();
     const stage = document.querySelector('.cq-stage').getBoundingClientRect();
+    const still = Object.assign(document.createElement('style'), { textContent: '.cq-scene, .cq-scene *, .cq-scene *::after { transform: none !important; }' });
+    /** Whether el or an ancestor inside scene is absolutely placed, out of the flow. */
+    const placed = (el, scene) => {
+      for (let e = el; e !== scene; e = e.parentElement) if (getComputedStyle(e).position === 'absolute') return true;
+      return false;
+    };
+    /** What overflows in scene, laid out still. */
+    const overflow = (scene, name) => {
+      document.head.append(still);
+      const r = scene.getBoundingClientRect();
+      const pad = getComputedStyle(scene);
+      const box = { left: r.left + parseFloat(pad.paddingLeft), right: r.right - parseFloat(pad.paddingRight), top: r.top + parseFloat(pad.paddingTop), bottom: r.bottom - parseFloat(pad.paddingBottom) };
+      const past = (e, b) => e.left < b.left - 1 || e.right > b.right + 1 || e.top < b.top - 1 || e.bottom > b.bottom + 1;
+      const inline = (el) => ['inline', 'contents'].includes(getComputedStyle(el).display);
+      for (const el of scene.querySelectorAll('*')) {
+        if (placed(el, scene) || inline(el)) continue;
+        const e = el.getBoundingClientRect();
+        if (e.width === 0 || e.height === 0) continue;
+        const what = `${name}: ${el.tagName} ${el.getAttribute('class') ?? ''} "${el.textContent.trim().slice(0, 30)}"`;
+        if (past(e, box)) found.add(`${what} leaves the scene's box`);
+        if (el.parentElement !== scene && !inline(el.parentElement) && past(e, el.parentElement.getBoundingClientRect())) found.add(`${what} leaves its parent`);
+        if (el.scrollWidth > el.clientWidth + 1) found.add(`${what} holds a line too wide for it`);
+      }
+      still.remove();
+    };
     for (let n = 0; n < window.cuadro.durationInFrames; n += 10) {
       await window.cuadro.setFrame(n);
       for (const scene of document.querySelectorAll('.cq-scene')) {
         if (getComputedStyle(scene).opacity !== '1') continue;
         const name = scene.className;
+        overflow(scene, name);
         let top = Infinity, bottom = -Infinity;
         for (const el of scene.querySelectorAll('*')) {
           const r = el.getBoundingClientRect();
@@ -73,6 +103,19 @@ test('scenes: text of 28 px or more, inside the frame, filling 60% of its height
     try {
       await b.page.waitForFunction(() => window.cuadro);
       assert.deepEqual(await problems(b.page), [], JSON.stringify(props));
+      assert.deepEqual(b.errors, []);
+    } finally {
+      await b.close();
+    }
+  }
+});
+
+test('scenes: German text, a third longer, fits every scene in both formats, above the captions', async () => {
+  for (const format of Object.keys(formats)) {
+    const b = await open(`/test/long/index.html?render&props=${encodeURIComponent(JSON.stringify({ format }))}`);
+    try {
+      await b.page.waitForFunction(() => window.cuadro);
+      assert.deepEqual(await problems(b.page), [], format);
       assert.deepEqual(b.errors, []);
     } finally {
       await b.close();

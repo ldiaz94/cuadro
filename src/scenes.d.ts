@@ -65,7 +65,7 @@ export function steps(props: { length: number; title?: string; items: Item[]; wo
 export function tiles(props: { length: number; title?: string; items: Item[]; words?: Word[] }): View;
 /** A logo (image URL) and a line, then a call to action and a URL; held to the end, with no fade-out. */
 export function endCard(props: { length: number; logo?: string; line: Marked; cta?: string; url?: string }): View;
-/** A phone or browser showing an image (a screenshot path, panned top to bottom) or 2 to 4 built rows, one per beat, as the camera eases in; an optional headline beside it. */
+/** A phone or browser showing an image (a screenshot path, panned top to bottom) or 2 to 4 built rows, shown at once and lit one per beat, as the camera eases in; an optional headline beside it. */
 export function app(props: { length: number; title?: Marked; device?: 'phone' | 'browser'; image?: string; rows?: Row[]; words?: Word[] }): View;
 /** A big quote word by word, then who said it: name, role, and an avatar (an image path) or their initials. */
 export function quote(props: { length: number; quote: Marked; name: string; role?: string; image?: string }): View;

@@ -30,6 +30,13 @@
 // a portrait frame stacks what sits side by side in landscape. A stage
 // whose theme sets --safe-bottom (captions.js's CaptionBand) keeps the
 // scenes above that band.
+// Text fits the frame in any language: grids give their tracks no
+// minimum, list rows grow to their tallest, and once fonts are ready each
+// newly drawn scene shrinks its type (--fit, down to MinFit, never under
+// --t-small) until nothing leaves its padded box or spills from its own;
+// only then do words too long for a line break. The fit reads layout with
+// transforms off, so it is the same whichever frame a scene is first
+// drawn at.
 // Depends on spark, animate.js, timeline.js and composition.js (for fps).
 // Leaves out transitions other than cross-fades, icons, images other than
 // the end card's logo, the app's screenshot and the quote's avatar, and
@@ -77,7 +84,8 @@ export function playLength(...clips) {
 export function stage(theme, view) {
   return (frame) => {
     addStyles();
-    const fps = currentComposition().fps;
+    const { fps, settle } = currentComposition();
+    settle(fitScenes);
     /** A glow wandering slowly around (x, y), in percent of the frame. */
     const glow = (colour, x, y, speed) => html`<i style=${() => {
       const s = frame() / fps;
@@ -281,8 +289,8 @@ function alike(a, b) {
 
 /**
  * A phone (or a browser window) showing a screenshot, `image`, panned from its top to its bottom
- * over two beats, or 2-4 built `rows`, one arriving per beat; the camera eases in and turns toward
- * the viewer for the whole scene. Beside it (above it in portrait) an optional headline.
+ * over two beats, or 2-4 built `rows`, arriving at once so the screen starts full, then lit one
+ * per beat; the camera eases in and turns toward the viewer for the whole scene. Beside it (above it in portrait) an optional headline.
  */
 export function app({ length, title, device = 'phone', image, rows, words: said }) {
   if (!image === !rows) throw new Error('app: give an image or rows, not both');
@@ -301,7 +309,7 @@ export function app({ length, title, device = 'phone', image, rows, words: said 
         <div class="cq-screen">${image
           ? html`<img src=${image} alt="" style=${() => ({ objectPosition: `50% ${100 * t.between(windows[0].from + 10, end)}%` })}>`
           : rows.map((row, i) => html`<div class=${`cq-row cq-${row.kind ?? 'item'}`} style=${() => {
-            const p = t.enter(windows[i].from);
+            const p = t.enter(4 * i);
             return { '--a': active(t, windows, i), opacity: Math.min(1, Math.max(0, p)), transform: `translateY(${2 * (1 - p)}cqh) scale(${0.9 + 0.1 * p})` };
           }}>
             ${['item', 'profile'].includes(row.kind ?? 'item') && html`<span class="cq-avatar">${initials(row.title)}</span>`}
@@ -312,13 +320,17 @@ export function app({ length, title, device = 'phone', image, rows, words: said 
   }, { className: 'cq-app' });
 }
 
+/** An opening quotation mark, two blocks with tails, drawn rather than set so it looks the same in every font. */
+const QuoteMark = 'M0 48V29C0 13 9 3 25 0l3 6c-9 3-14 9-14 16h12v26zM34 48V29c0-16 9-26 25-29l3 6c-9 3-14 9-14 16h12v26z';
+
 /** A quote word by word, its *marked words* swept in the second beat, as who said it arrives under it: an avatar (an image URL) or their initials, ringed by a sweep to the end. */
 export function quote({ length, quote, name, role, image }) {
   const [said, by] = beats(length, 2);
   const count = quote.split(/\s+/).length;
-  const size = count <= 10 ? 'var(--t-1)' : count <= 20 ? 'var(--t-2)' : 'var(--t-3)';
+  const size = count <= 10 ? 'var(--f-1)' : count <= 20 ? 'var(--f-2)' : 'var(--f-3)';
   return scene(length, (t) => html`
-    <i class="cq-display cq-glyph" style=${() => ({ opacity: Math.min(1, t.enter(said.from)), transform: `translateY(${-3 * t.between(0, length)}cqh) rotate(${-8 + 8 * t.enter(said.from)}deg)` })}>“</i>
+    <svg class="cq-glyph" viewBox="0 0 62 48" style=${() => ({ opacity: Math.min(1, t.enter(said.from)), transform: `translateY(${-3 * t.between(0, length)}cqh) rotate(${-8 + 8 * t.enter(said.from)}deg)` })}>
+      <path d=${QuoteMark} /></svg>
     <p class="cq-display cq-quoted" style=${{ fontSize: size }}>${words(quote, t, said.from + 4, by.from)}</p>
     <div class="cq-by" style=${() => rise(t.enter(by.from))}>
       <span class="cq-ring" style=${() => ({ '--p': t.between(by.from, length - Fade) })}>
@@ -396,6 +408,77 @@ function progress(t, windows) {
   })}></i></i>`)}</div>`;
 }
 
+/** The smallest --fit: type shrinks to this share of its size (never under --t-small) before a scene may overflow. */
+export const MinFit = 0.6;
+
+/**
+ * Fits each scene drawn since the last frame: shrinks --fit by 0.05 while its content overflows (see
+ * overflows()), then shrinks the type of each box holding a word too wide for it, so one long word
+ * does not shrink the whole scene.
+ */
+function fitScenes(root) {
+  for (const section of root.querySelectorAll('.cq-scene:not([data-fit])')) {
+    section.classList.add('cq-measure');
+    let fit = 1;
+    while (fit > MinFit && overflows(section)) {
+      fit = Math.round(100 * (fit - 0.05)) / 100;
+      section.style.setProperty('--fit', fit);
+    }
+    fitWords(section);
+    section.classList.remove('cq-measure');
+    section.dataset.fit = fit;
+  }
+}
+
+/**
+ * Scales down, innermost first, the font of each box in section whose widest word is wider than it,
+ * never under --t-small; its like boxes (same tag and class, such as every tile's heading) take the
+ * same size, so they still match.
+ */
+function fitWords(section) {
+  const probe = document.createElement('i');
+  probe.style.fontSize = 'var(--t-small)';
+  section.append(probe);
+  const floor = parseFloat(getComputedStyle(probe).fontSize);
+  probe.remove();
+  const kind = (el) => `${el.tagName}.${el.getAttribute('class')}`;
+  const all = [...section.querySelectorAll('*')];
+  for (const el of all.reverse()) {
+    if (el.clientWidth === 0 || el.scrollWidth <= el.clientWidth + 1) continue;
+    const size = Math.max(floor, Math.floor((parseFloat(getComputedStyle(el).fontSize) * el.clientWidth) / el.scrollWidth));
+    for (const like of all) if (kind(like) === kind(el) && parseFloat(getComputedStyle(like).fontSize) > size) like.style.fontSize = `${size}px`;
+  }
+}
+
+/**
+ * Whether something in a scene's flow (absolutely placed things aside) leaves its padded box or its
+ * parent's box; fitWords() handles lines too wide. Inline boxes are left out (they stand taller than
+ * their line), as are display: contents ones (they have no box).
+ */
+function overflows(section) {
+  const box = section.getBoundingClientRect();
+  const pad = getComputedStyle(section);
+  const inner = {
+    left: box.left + parseFloat(pad.paddingLeft), right: box.right - parseFloat(pad.paddingRight),
+    top: box.top + parseFloat(pad.paddingTop), bottom: box.bottom - parseFloat(pad.paddingBottom),
+  };
+  /** Whether el or an ancestor inside the scene is absolutely placed. */
+  const placed = (el) => {
+    for (let e = el; e !== section; e = e.parentElement) if (getComputedStyle(e).position === 'absolute') return true;
+    return false;
+  };
+  /** Whether rect r reaches past box b, by more than a pixel. */
+  const past = (r, b) => r.left < b.left - 1 || r.right > b.right + 1 || r.top < b.top - 1 || r.bottom > b.bottom + 1;
+  return [...section.querySelectorAll('*')].some((el) => {
+    if (placed(el) || ['inline', 'contents'].includes(getComputedStyle(el).display)) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return false;
+    const parent = el.parentElement;
+    const inParent = parent === section || ['inline', 'contents'].includes(getComputedStyle(parent).display) || !past(r, parent.getBoundingClientRect());
+    return past(r, inner) || !inParent;
+  });
+}
+
 /** Adds the scenes' stylesheet to the page, once. */
 function addStyles() {
   if (document.getElementById('cuadro-scenes')) return;
@@ -405,19 +488,26 @@ function addStyles() {
   document.head.append(style);
 }
 
-/** The scenes' styles; every size is a theme property or a container unit. */
+/**
+ * The scenes' styles; every size is a theme property or a container unit. A scene's type sizes,
+ * --f-body to --f-mega, are the theme's times --fit, never under --t-small.
+ */
 const Css = `
 .cq-stage { position: absolute; inset: 0; overflow: hidden; container-type: size; background: var(--bg); color: var(--ink);
   font: 450 var(--t-body)/1.3 var(--font-body); -webkit-font-smoothing: antialiased; }
 .cq-stage *, .cq-stage *::before, .cq-stage *::after { box-sizing: border-box; }
 .cq-glow i { position: absolute; left: 0; top: 0; width: 90cqmax; height: 90cqmax; margin: -45cqmax 0 0 -45cqmax; }
 .cq-scene { position: absolute; inset: 0; padding: var(--pad-y) var(--pad-x); display: flex; flex-direction: column; justify-content: center;
-  padding-bottom: max(var(--pad-y), calc(var(--safe-bottom, 0px) + 3cqmin)); }
+  padding-bottom: max(var(--pad-y), calc(var(--safe-bottom, 0px) + 3cqmin)); font-size: var(--f-body); overflow-wrap: break-word;
+  --fit: 1; --f-body: max(var(--t-small), calc(var(--t-body) * var(--fit))); --f-3: max(var(--t-small), calc(var(--t-3) * var(--fit)));
+  --f-2: max(var(--t-small), calc(var(--t-2) * var(--fit))); --f-1: max(var(--t-small), calc(var(--t-1) * var(--fit)));
+  --f-hero: max(var(--t-small), calc(var(--t-hero) * var(--fit))); --f-mega: max(var(--t-small), calc(var(--t-mega) * var(--fit))); }
+.cq-measure, .cq-measure *, .cq-measure *::before, .cq-measure *::after { transform: none !important; overflow-wrap: normal !important; }
 .cq-scene > * { flex: none; }
 .cq-scene :where(h1, h2, h3, p, ol) { margin: 0; padding: 0; }
 .cq-display { font-family: var(--font-display); font-weight: var(--display-weight); letter-spacing: var(--tracking); line-height: 1.04; }
-.cq-hero { font-size: var(--t-hero); text-wrap: balance; }
-.cq-head { font-size: var(--t-2); margin-bottom: 6cqh; text-wrap: balance; }
+.cq-hero { font-size: var(--f-hero); text-wrap: balance; }
+.cq-head { font-size: var(--f-2); margin-bottom: 4.5cqh; text-wrap: balance; }
 .cq-word { display: inline-block; }
 .cq-mark { color: var(--accent); background: linear-gradient(var(--accent2), var(--accent2)) no-repeat 0 92% / calc(var(--w) * 100%) 0.09em;
   box-decoration-break: clone; -webkit-box-decoration-break: clone; }
@@ -426,105 +516,102 @@ const Css = `
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
 .cq-kicker::before { content: ''; width: 7cqmin; height: 0.6cqmin; background: currentColor; transform-origin: left; transform: scaleX(var(--w)); }
 .cq-title { justify-content: space-between; }
-.cq-title .cq-hero { margin-block: auto; max-width: 12em; font-size: calc(var(--t-hero) * 1.15); }
-.cq-sub { max-width: 26em; font-size: var(--t-3); color: var(--muted); }
+.cq-title .cq-hero { margin-block: auto; max-width: 12em; font-size: calc(var(--f-hero) * 1.15); }
+.cq-sub { max-width: 26em; font-size: var(--f-3); color: var(--muted); }
 
 .cq-lines { display: flex; flex-direction: column; gap: 3cqh; }
 .cq-progress { position: absolute; left: var(--pad-x); right: var(--pad-x); bottom: max(6cqh, var(--safe-bottom, 0px)); display: flex; gap: 1.2cqmin; }
 .cq-progress > i { flex: 1; height: 0.5cqmin; border-radius: 1cqmin; background: var(--line); overflow: hidden; }
 .cq-progress > i > i { display: block; height: 100%; background: var(--accent); transform-origin: left; }
 
-.cq-figures { display: grid; grid-template-columns: auto 1fr; column-gap: 5cqw; align-items: center; }
+.cq-figures { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 5cqw; align-items: center; }
 .cq-figure { display: contents; }
-.cq-figure b { font-size: min(calc(var(--t-mega) * var(--k)), 26cqw); line-height: 1;
+.cq-figure b { font-size: min(calc(var(--f-mega) * var(--k)), 26cqw); line-height: 1;
   color: color-mix(in srgb, var(--accent) calc(var(--a) * 100%), color-mix(in srgb, var(--ink) 30%, transparent));
   font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cq-rule { grid-column: 1 / -1; display: block; height: 0.5cqmin; margin: 2.4cqh 0; background: var(--line); }
 .cq-rule i { display: block; height: 100%; background: var(--accent2); transform-origin: left; }
-.cq-figure p { font-size: var(--t-3); line-height: 1.2; color: color-mix(in srgb, var(--ink) calc(var(--a) * 100%), var(--muted)); }
+.cq-figure p { font-size: var(--f-3); line-height: 1.2; color: color-mix(in srgb, var(--ink) calc(var(--a) * 100%), var(--muted)); }
 
-.cq-steps-body { display: grid; grid-template-columns: 1fr 1.15fr; gap: 5cqw; flex: 1 1 0; min-height: 0; }
-.cq-list { position: relative; display: grid; grid-template-rows: repeat(var(--n), 1fr); list-style: none; }
-.cq-list li { position: relative; display: flex; align-items: center; gap: 2.4cqmin; padding: 0 2.8cqmin; font-size: var(--t-3); font-weight: 650;
-  letter-spacing: -0.01em; }
+.cq-steps-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 5cqw; flex: 1 1 0; min-height: 0; }
+.cq-list { position: relative; align-self: start; min-height: 100%; display: grid; grid-template-rows: repeat(var(--n), 1fr); list-style: none; }
+.cq-list li { position: relative; display: flex; align-items: center; gap: 2.4cqmin; padding: 1.2cqmin 2.8cqmin; font-size: var(--f-3); font-weight: 650;
+  line-height: 1.15; letter-spacing: -0.01em; }
 .cq-num { flex: none; display: grid; place-items: center; width: 1.8em; height: 1.8em; border-radius: 50%; border: 0.3cqmin solid currentColor;
   font-size: var(--t-small); }
 .cq-pill { position: absolute; left: 0; right: 0; top: 0; height: calc(100% / var(--n)); border-radius: var(--radius); background: var(--surface);
   box-shadow: inset 0.8cqmin 0 0 var(--accent); }
-.cq-panel { position: relative; display: grid; border-radius: var(--radius); background: var(--surface); padding: 5cqmin; }
+.cq-panel { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); border-radius: var(--radius); background: var(--surface); padding: 5cqmin; }
 .cq-panel > div { grid-area: 1 / 1; display: flex; flex-direction: column; justify-content: center; }
-.cq-panel b { font-size: var(--t-2); color: var(--accent); }
-.cq-panel h3 { margin-top: 1cqh; font-size: var(--t-hero); }
-.cq-panel p { margin-top: 2.5cqh; font-size: var(--t-3); line-height: 1.2; color: var(--muted); }
+.cq-panel b { font-size: var(--f-2); color: var(--accent); }
+.cq-panel h3 { margin-top: 1cqh; font-size: var(--f-hero); }
+.cq-panel p { margin-top: 2.5cqh; font-size: var(--f-3); line-height: 1.2; color: var(--muted); }
 .cq-panel .cq-progress { left: 5cqmin; right: 5cqmin; bottom: 4cqmin; }
 
-.cq-grid { display: grid; grid-template-columns: repeat(var(--cols), 1fr); grid-auto-rows: 1fr; gap: var(--gap); flex: 1 1 0; min-height: 0; }
-.cq-tile { display: flex; flex-direction: column; justify-content: flex-end; padding: 3.6cqmin; border-radius: var(--radius);
+.cq-grid { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); grid-auto-rows: 1fr; gap: var(--gap); flex: 1 1 0; min-height: 0; }
+.cq-tile { display: flex; flex-direction: column; justify-content: flex-end; padding: 2.6cqmin; border-radius: var(--radius);
   border: 1px solid var(--line); background: color-mix(in srgb, var(--accent) calc(var(--a) * 100%), var(--surface));
   color: color-mix(in srgb, var(--on-accent) calc(var(--a) * 100%), var(--ink));
   box-shadow: 0 calc(var(--a) * 3cqh) calc(var(--a) * 6cqh) -2cqh #0000004d; }
-.cq-index { margin-bottom: auto; font-size: var(--t-small); font-weight: 700; color: color-mix(in srgb, currentColor calc(var(--a) * 100%), var(--accent)); }
-.cq-tile h3 { font-size: var(--t-2); }
-.cq-tile p { margin-top: 1cqh; line-height: 1.2; opacity: 0.75; }
+.cq-index { margin-bottom: auto; font-size: var(--t-small); line-height: 1; font-weight: 700; color: color-mix(in srgb, currentColor calc(var(--a) * 100%), var(--accent)); }
+.cq-tile h3 { font-size: var(--f-2); }
+.cq-tile p { margin-top: 1cqh; line-height: 1.15; opacity: 0.75; }
 
 .cq-end { align-items: center; text-align: center; }
 .cq-logo { height: 18cqmin; width: auto; margin-bottom: 4cqh; }
-.cq-line { font-size: var(--t-1); max-width: 14em; text-wrap: balance; }
+.cq-line { font-size: var(--f-1); max-width: 14em; text-wrap: balance; }
 .cq-cta { position: relative; overflow: hidden; margin-top: 5.5cqh; padding: 0.55em 1.4em; border-radius: 99em; background: var(--accent);
-  color: var(--on-accent); font-size: var(--t-3); font-weight: 700; }
+  color: var(--on-accent); font-size: var(--f-3); font-weight: 700; }
 .cq-cta::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, #ffffff66, transparent 70%);
   transform: translateX(calc((var(--s) * 2 - 1) * 100%)); }
 .cq-url { margin-top: 3.5cqh; color: var(--muted); font-weight: 600; }
 
 .cq-app { flex-direction: row; align-items: center; justify-content: center; gap: 6cqw; }
-.cq-app .cq-head { flex: 1 1 0; margin: 0; font-size: var(--t-1); }
+.cq-app .cq-head { flex: 1 1 0; margin: 0; font-size: var(--f-1); }
 .cq-view { align-self: stretch; display: flex; justify-content: center; }
 .cq-device { display: flex; flex-direction: column; height: 100%; padding: 1.2cqmin; background: #101217;
   box-shadow: 0 0 0 0.3cqmin var(--line), 0 4cqh 10cqh -3cqh #00000066;
   transform: perspective(240cqmin) translateY(calc(var(--pan) * 2cqh)) rotateY(calc(var(--turn) * -14deg)) scale(var(--zoom)); }
-.cq-phone { width: 56cqmin; border-radius: 6cqmin; }
+.cq-phone { width: 64cqmin; border-radius: 6cqmin; }
 .cq-browser { width: 62cqw; border-radius: 2cqmin; }
 .cq-bar { display: flex; gap: 1cqmin; padding: 0.4cqmin 0.8cqmin 1.6cqmin; }
 .cq-bar i { width: 1.6cqmin; height: 1.6cqmin; border-radius: 50%; background: #ffffff40; }
 .cq-screen { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 1.4cqmin;
-  padding: 5cqmin 2.4cqmin 2.4cqmin; border-radius: 4.8cqmin; background: color-mix(in srgb, var(--bg) 88%, var(--ink)); color: var(--ink); }
+  padding: 4.4cqmin 2.4cqmin 2.4cqmin; border-radius: 4.8cqmin; background: color-mix(in srgb, var(--bg) 88%, var(--ink)); color: var(--ink); }
 .cq-phone .cq-screen::before { content: ''; position: absolute; top: 1.4cqmin; left: 50%; width: 14cqmin; height: 2.2cqmin; margin-left: -7cqmin;
   border-radius: 99em; background: #101217; }
 .cq-browser .cq-screen { padding: 3cqmin; border-radius: 1cqmin; }
 .cq-screen:has(img) { padding: 0; }
 .cq-screen img { flex: 1; min-height: 0; width: 100%; object-fit: cover; border-radius: inherit; }
-.cq-row { display: flex; align-items: center; gap: 1.8cqmin; padding: 1.6cqmin 2cqmin; border-radius: 2cqmin; background: var(--surface);
+.cq-row { display: flex; align-items: center; gap: 1.8cqmin; padding: 1.2cqmin 1.8cqmin; border-radius: 2cqmin; background: var(--surface);
   font-size: var(--t-small); line-height: 1.2; box-shadow: 0 0 0 calc(var(--a) * 0.5cqmin) var(--accent); }
 .cq-row p { display: flex; flex-direction: column; min-width: 0; }
 .cq-row b { font-weight: 650; }
 .cq-row p span { color: var(--muted); }
 .cq-avatar { flex: none; display: grid; place-items: center; width: 2em; height: 2em; border-radius: 50%; background: var(--accent);
   color: var(--on-accent); font-weight: 700; letter-spacing: 0.02em; }
-.cq-sent, .cq-received { max-width: 85%; border-radius: 3cqmin; }
+.cq-sent, .cq-received { max-width: 90%; border-radius: 3cqmin; }
 .cq-sent { align-self: flex-end; border-bottom-right-radius: 0.6cqmin; background: var(--accent); color: var(--on-accent); }
 .cq-sent p span { color: inherit; opacity: 0.75; }
 .cq-received { align-self: flex-start; border-bottom-left-radius: 0.6cqmin; }
-.cq-profile { flex-direction: column; gap: 1cqmin; text-align: center; }
-.cq-profile p { align-items: center; }
-.cq-profile b { font-size: var(--t-body); }
 
 .cq-quote { justify-content: space-between; }
-.cq-glyph { display: block; height: 0.42em; font-size: calc(var(--t-mega) * 1.1); font-style: normal; line-height: 0.8; color: var(--accent); }
+.cq-glyph { display: block; width: calc(var(--f-mega) * 0.6); fill: var(--accent); }
 .cq-quoted { margin-block: auto; max-width: 20em; line-height: 1.12; text-wrap: balance; }
 .cq-by { display: flex; align-items: center; gap: 2.8cqmin; }
 .cq-ring { flex: none; width: 15cqmin; height: 15cqmin; padding: 0.7cqmin; border-radius: 50%;
   background: conic-gradient(var(--accent2) calc(var(--p) * 360deg), var(--line) 0); }
-.cq-ring > * { width: 100%; height: 100%; border: 0.6cqmin solid var(--bg); object-fit: cover; font-size: var(--t-3); }
-.cq-by p { display: flex; flex-direction: column; font-size: var(--t-3); line-height: 1.2; }
+.cq-ring > * { width: 100%; height: 100%; border: 0.6cqmin solid var(--bg); object-fit: cover; font-size: var(--f-3); }
+.cq-by p { display: flex; flex-direction: column; font-size: var(--f-3); line-height: 1.2; }
 .cq-by b { font-weight: 700; }
-.cq-by p span { font-size: var(--t-body); color: var(--muted); }
+.cq-by p span { font-size: var(--f-body); color: var(--muted); }
 
-.cq-sides { display: grid; grid-template-columns: 1fr auto 1fr; gap: 3cqmin; flex: 1 1 0; min-height: 0; }
+.cq-sides { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 3cqmin; flex: 1 1 0; min-height: 0; }
 .cq-side { display: flex; flex-direction: column; justify-content: center; gap: 4cqh; padding: 5cqmin; border-radius: var(--radius);
   border: 1px solid var(--line); background: var(--surface); }
-.cq-side h3 { font-size: var(--t-2); }
+.cq-side h3 { font-size: var(--f-2); }
 .cq-side ul { display: flex; flex-direction: column; gap: 2.4cqh; margin: 0; padding: 0; list-style: none; }
-.cq-side li { display: flex; align-items: center; gap: 2cqmin; font-size: var(--t-3); font-weight: 550; line-height: 1.15; }
+.cq-side li { display: flex; align-items: center; gap: 2cqmin; font-size: var(--f-3); font-weight: 550; line-height: 1.15; }
 .cq-tick { position: relative; flex: none; width: 1em; height: 1em; border-radius: 50%; background: var(--line); }
 .cq-tick::before { content: ''; position: absolute; left: 28%; right: 28%; top: 47%; height: 0.1em; background: currentColor; }
 .cq-better { border-color: transparent; background: var(--accent); color: var(--on-accent);
@@ -540,17 +627,19 @@ const Css = `
   .cq-figures { grid-template-columns: 1fr; }
   .cq-figure p { margin-top: 1cqh; }
   .cq-logo { height: 30cqmin; }
-  .cq-line { font-size: var(--t-hero); }
-  .cq-steps-body { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; gap: 3cqh; }
-  .cq-grid { grid-template-columns: repeat(min(var(--cols), 2), 1fr); }
+  .cq-line { font-size: var(--f-hero); }
+  .cq-steps-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 3cqh; }
+  .cq-grid { grid-template-columns: repeat(min(var(--cols), 2), minmax(0, 1fr)); }
   .cq-app { flex-direction: column; align-items: stretch; gap: 4cqh; }
-  .cq-app .cq-head { flex: none; font-size: var(--t-2); }
+  .cq-app .cq-head { flex: none; font-size: var(--f-2); }
   .cq-view { flex: 1 1 0; min-height: 0; }
   .cq-device { transform: perspective(240cqmin) translateY(calc(var(--pan) * 2cqh)) rotateX(calc(var(--turn) * 12deg)) scale(var(--zoom)); }
   .cq-phone { width: 76cqw; }
   .cq-browser { width: 100%; }
-  .cq-row { font-size: var(--t-body); }
-  .cq-sides { grid-template-columns: none; grid-template-rows: 1fr auto 1fr; }
+  .cq-row { font-size: var(--f-body); }
+  .cq-profile { flex-direction: column; gap: 1cqmin; text-align: center; }
+  .cq-profile p { align-items: center; }
+  .cq-sides { grid-template-columns: none; grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr); }
   .cq-vs { justify-self: center; }
   .cq-better { clip-path: inset(0 0 calc((1 - var(--r)) * 100%) 0 round var(--radius)); }
 }

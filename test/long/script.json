@@ -1,0 +1,31 @@
+{
+  "language": "de",
+  "captions": true,
+  "brand": { "logo": "../../doc/img/logo.svg" },
+  "scenes": [
+    { "type": "title", "props": { "kicker": "Mentoring für Berufseinsteiger", "title": "Empfehlungen öffnen *verschlossene Türen*", "sub": "Kostenlos registrieren und von erfahrenen Mentorinnen und Mentoren lernen." }, "say": "Empfehlungen öffnen Türen." },
+    { "type": "kinetic", "props": { "lines": ["Kaltbewerbungen verschwinden *im Nichts.*", "Empfehlungen öffnen *Türen.*", "Tangent bringt dich *direkt hin.*", "Und zwar *völlig kostenlos.*"] }, "say": "Kaltbewerbungen verschwinden im Nichts." },
+    { "type": "stat", "props": { "title": "Der Vorteil von Empfehlungen", "stats": [{ "value": 9, "suffix": "x", "label": "höhere Wahrscheinlichkeit, eingestellt zu werden" }, { "value": 100, "suffix": " %", "label": "kostenlos für Bewerberinnen und Bewerber" }] }, "say": "Neunmal wahrscheinlicher." },
+    { "type": "steps", "props": { "title": "So funktioniert Tangent", "items": [
+      { "title": "Kostenlos registrieren", "text": "In wenigen Minuten startklar" },
+      { "title": "Videovorstellung aufnehmen", "text": "Zeig dich so, wie du bist" },
+      { "title": "Mentorinnen kennenlernen", "text": "Aus großen Technologieunternehmen" },
+      { "title": "Empfehlungen erhalten", "text": "Direkt zu den Personalverantwortlichen" }] }, "say": "So funktioniert es." },
+    { "type": "tiles", "props": { "title": "Immer für dich da, rund um die Uhr", "items": [
+      { "title": "Lebenslaufüberprüfung", "text": "Jeder Punkt wird geschliffen" },
+      { "title": "Vorstellungsgespräche üben", "text": "Echte Fragen aus der Praxis" },
+      { "title": "Stellen finden", "text": "Passende Angebote entdecken" },
+      { "title": "Netzwerk aufbauen", "text": "Kontakte, die wirklich zählen" },
+      { "title": "Gehaltsverhandlung", "text": "Selbstbewusst verhandeln lernen" },
+      { "title": "Bewerbungsunterlagen", "text": "Anschreiben, die überzeugen" }] }, "say": "Immer für dich da." },
+    { "type": "app", "props": { "title": "Frag deinen *Mentor-Zwilling*", "rows": [
+      { "kind": "sent", "title": "Prüfst du meinen Lebenslauf?" },
+      { "kind": "received", "title": "Gern! Drei Vorschläge dazu", "text": "Mentor-Zwilling von Ana" },
+      { "kind": "item", "title": "Gesprächstraining", "text": "Morgen um zehn Uhr" },
+      { "kind": "profile", "title": "Ana Ruiz", "text": "Produktmanagerin, Big Tech" }] }, "say": "Frag deinen Mentor." },
+    { "type": "quote", "props": { "quote": "Durch eine einzige Empfehlung meiner Mentorin bekam ich *innerhalb von drei Wochen* drei Einladungen zu Vorstellungsgesprächen.", "name": "Maximiliane Schönberger-Lindqvist", "role": "Softwareentwicklerin, vorher Quereinsteigerin" }, "say": "Eine Empfehlung reichte." },
+    { "type": "compare", "props": { "title": "Bewerben ohne und mit Empfehlung", "left": { "label": "Kaltbewerbung", "items": ["Hunderte Bewerbungen verschickt", "Keine Rückmeldungen", "Automatische Absagen"] },
+      "right": { "label": "Mit Tangent", "items": ["Persönliche Empfehlungen", "Mentorinnen an deiner Seite", "Einladungen zu Gesprächen"] } }, "say": "Ohne und mit Empfehlung." },
+    { "type": "endCard", "props": { "line": "Lass dich *empfehlen.* Lass dich *einstellen.*", "cta": "Jetzt kostenlos registrieren", "url": "jointangent.com" }, "say": "Jetzt registrieren." }
+  ]
+}
