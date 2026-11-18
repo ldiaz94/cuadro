@@ -20,6 +20,8 @@ export function make(options: {
   voiceProvider?: string;
   /** The speech provider's voice (default: the provider's own). */
   voice?: string;
+  /** How long one step in Chromium may take, in milliseconds (default: 30000); a slower one is a problem sent to the model. */
+  timeout?: number;
   /** Called with each progress message. */
   onStep?: (message: string) => void;
 }): Promise<{ page: string; file: string }>;

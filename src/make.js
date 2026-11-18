@@ -18,7 +18,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-import { launch } from './chromium.js';
+import { StepTimeout, launch, within } from './chromium.js';
 import { chat } from './llm.js';
 import { serve } from './serve.js';
 import { voice } from './voice.js';
@@ -26,7 +26,7 @@ import { voice } from './voice.js';
 /** Makes <out>/video.js and <out>/index.html from prompt; onStep(message) reports progress. */
 export async function make({
   prompt, provider, model, baseUrl, out = 'make-out', rounds = 3, root = process.cwd(),
-  voiceProvider, voice: voiceName, onStep = () => {},
+  voiceProvider, voice: voiceName, timeout = StepTimeout, onStep = () => {},
 }) {
   if (relative(resolve(root), resolve(out)).split(sep)[0] === '..') throw new Error(`cuadro: ${out} is not under ${root}`);
   await mkdir(out, { recursive: true });
@@ -49,7 +49,7 @@ export async function make({
     if (reviewing && !source && /^\s*OK\b/.test(reply)) break;
     if (!source) throw new Error('cuadro: the model replied without a ```js block holding video.js');
     await writeFile(join(out, 'video.js'), source);
-    const result = await check(root, out, libs);
+    const result = await check(root, out, libs, timeout);
     problem = result.problem;
     reviewing = !problem;
     if (reviewing) passed = source;
@@ -197,35 +197,45 @@ const LoadTimeout = 10000;
  * The model's code runs here, so the server serves only out and the two libraries, and the tab may load
  * nothing from any other origin.
  */
-async function check(root, out, libs) {
-  const server = await serve(root, { allow: [relative(root, out), dirname(libs.cuadro), dirname(libs.spark)] });
-  const browser = await launch();
-  const errors = [];
-  const shots = [];
+async function check(root, out, libs, timeout) {
+  let server, browser;
   try {
+    server = await serve(root, { allow: [relative(root, out), dirname(libs.cuadro), dirname(libs.spark)] });
+    browser = await launch();
     const tab = await browser.newPage();
     await tab.route('**', (route) => (new URL(route.request().url()).origin === server.origin ? route.continue() : route.abort()));
-    tab.on('pageerror', (e) => errors.push(`page error: ${e.message}`));
-    tab.on('response', (r) => r.status() >= 400 && !r.url().endsWith('/favicon.ico') && errors.push(`HTTP ${r.status()} for ${r.url()}`));
     const url = new URL(relative(resolve(root), resolve(out, 'index.html')).split(sep).join('/'), server.origin + '/');
-    await tab.goto(`${url.href}?render`);
-    if (errors.length) return { problem: errors.join('\n'), shots };
-    const started = await tab.waitForFunction(() => window.cuadro, null, { timeout: LoadTimeout }).then(() => true, () => false);
-    if (!started) return { problem: [...errors, 'composition() was never called'].join('\n'), shots };
-    const { width, height, durationInFrames: total } = await tab.evaluate(() => window.cuadro);
-    if (!(Number.isInteger(total) && total > 0)) return { problem: `durationInFrames is ${total}; it must be a positive whole number`, shots };
+    return await shoot(tab, `${url.href}?render`, timeout);
+  } finally {
+    await Promise.allSettled([browser?.close(), server?.close()]);
+  }
+}
+
+/** Loads url in tab and shoots five frames, each step within timeout; any failure is the problem. */
+async function shoot(tab, url, timeout) {
+  const errors = [];
+  const shots = [];
+  const failure = (why) => ({ problem: [...errors, why].filter(Boolean).join('\n'), shots });
+  const broke = new Promise((ok) => tab.on('pageerror', ok)); // ends the wait for composition()
+  tab.on('pageerror', (e) => errors.push(`page error: ${e.message}`));
+  tab.on('response', (r) => r.status() >= 400 && !r.url().endsWith('/favicon.ico') && errors.push(`HTTP ${r.status()} for ${r.url()}`));
+  try {
+    await within(tab.goto(url), timeout, 'loading the page');
+    if (errors.length) return failure();
+    const loaded = tab.waitForFunction(() => window.cuadro, null, { timeout: LoadTimeout }).then(() => true, () => false);
+    if (!(await Promise.race([loaded, broke.then(() => false)]))) return failure('composition() was never called');
+    const { width, height, durationInFrames: total } = await within(tab.evaluate(() => window.cuadro), timeout, 'reading window.cuadro');
+    if (!(Number.isInteger(total) && total > 0)) return failure(`durationInFrames is ${total}; it must be a positive whole number`);
     await tab.setViewportSize({ width, height });
     const frames = [0, 0.25, 0.5, 0.75, 1].map((q) => Math.round(q * (total - 1)));
     for (const n of frames) {
-      const failed = await tab.evaluate((n) => window.cuadro.setFrame(n), n).then(() => null, (e) => e.message);
-      if (failed) errors.push(`setFrame(${n}) failed: ${failed}`);
-      if (errors.length) return { problem: errors.join('\n'), shots };
+      await within(tab.evaluate((n) => window.cuadro.setFrame(n), n), timeout, `setFrame(${n})`);
+      if (errors.length) return failure();
       shots.push(await tab.screenshot({ clip: { x: 0, y: 0, width, height } }));
     }
     if (shots.every((s) => s.equals(shots[0]))) return { problem: `frames ${frames.join(', ')} are all identical: nothing moves`, shots, frames };
     return { shots, frames };
-  } finally {
-    await browser.close();
-    await server.close();
+  } catch (e) {
+    return failure(e.message);
   }
 }

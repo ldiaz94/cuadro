@@ -167,6 +167,18 @@ throw new Error('fetched ' + found.join(' '));
   assert.match(problem, /fetched 404 blocked 200/);
 });
 
+test('make: a frame that never finishes is a problem sent back, not a hang', async (t) => {
+  process.env.ANTHROPIC_API_KEY = 'ka';
+  const out = await folder(t);
+  const stuck = working.replace("left: frame() * 2 + 'px'", "left: (frame() > 0 ? stall() : 0) + 'px'") + 'function stall() { for (;;); }\n';
+  const s = await fakeServer([said('```js\n' + stuck + '```'), said('```js\n' + working + '```'), said('OK')]);
+  t.after(() => s.close());
+  await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out, timeout: 1000 });
+  const problem = JSON.parse(s.requests[1].body).messages.at(-1).content.at(-1).text;
+  assert.match(problem, /setFrame\(5\) took longer than 1 s/);
+  assert.equal(await readFile(join(out, 'video.js'), 'utf8'), working);
+});
+
 test('make: narration speaks the script and hands voice.json to the model', async (t) => {
   process.env.ANTHROPIC_API_KEY = 'ka';
   const out = await folder(t);

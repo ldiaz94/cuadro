@@ -8,6 +8,7 @@
 // the video's length, encodes AAC, and muxes it with the video copied as
 // it is. With no clips and no soundtrack the mp4 has no audio stream.
 // The page's numbers are checked before they reach ffmpeg's filter graph.
+// A page error, or a step in the page that takes over 30 s, fails it.
 // Depends on playwright-core (through chromium.js), serve.js, and ffmpeg
 // on the PATH. Leaves out parallel rendering, other codecs and containers,
 // transparency, and clips served from anywhere but the root.
@@ -15,7 +16,7 @@ import { spawn } from 'node:child_process';
 import { copyFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
-import { launch } from './chromium.js';
+import { StepTimeout, launch, within } from './chromium.js';
 import { serve } from './serve.js';
 
 /** The rate the clips are resampled to before mixing, in samples a second. */
@@ -25,38 +26,30 @@ const SampleRate = 48000;
 export async function render({ page, out, props, audio, root = '.', onProgress = () => {} }) {
   const path = relative(resolve(root), resolve(page));
   if (path.startsWith('..' + sep) || path === '..') throw new Error(`cuadro: ${page} is not under ${root}`);
-  const server = await serve(root);
-  const browser = await launch();
-  const dir = await mkdtemp(join(tmpdir(), 'cuadro-'));
-  const video = join(dir, 'video.mp4');
-  let encoder;
+  let server, browser, dir, encoder;
   try {
+    server = await serve(root);
+    browser = await launch();
+    dir = await mkdtemp(join(tmpdir(), 'cuadro-'));
     const tab = await browser.newPage();
-    // A page error fails the render at the next step instead of hanging it.
-    const failed = new Promise((_, reject) => tab.on('pageerror', (e) => reject(new Error(`cuadro: page error: ${e.message}`))));
-    failed.catch(() => {});
-    const step = (p) => Promise.race([p, failed]);
-
+    const step = guarded(tab);
     const url = new URL(path.split(sep).join('/'), server.origin + '/');
     url.searchParams.set('render', '');
     if (props) url.searchParams.set('props', JSON.stringify(props));
-    await step(tab.goto(url.href));
-    await step(tab.waitForFunction(() => window.cuadro));
-    const { width, height, fps, durationInFrames } = await tab.evaluate(() => window.cuadro);
+    await step(tab.goto(url.href), 'loading the page');
+    await step(tab.waitForFunction(() => window.cuadro), 'waiting for composition()');
+    const { width, height, fps, durationInFrames } = sized(await tab.evaluate(() => window.cuadro));
     const duration = durationInFrames / fps;
-    if (![width, height, durationInFrames].every((n) => Number.isInteger(n) && n > 0) || !(Number.isFinite(fps) && fps > 0)) {
-      throw new Error('cuadro: width, height and durationInFrames must be whole numbers above 0, and fps a number above 0');
-    }
-    if (width % 2 || height % 2) throw new Error('cuadro: width and height must be even for H.264');
     await tab.setViewportSize({ width, height });
 
+    const video = join(dir, 'video.mp4');
     encoder = ffmpeg([
       '-loglevel', 'error', '-y',
       '-f', 'image2pipe', '-framerate', String(fps), '-i', '-',
       '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-t', String(duration), video,
     ]);
     for (let n = 0; n < durationInFrames; n++) {
-      await step(tab.evaluate((n) => window.cuadro.setFrame(n), n));
+      await step(tab.evaluate((n) => window.cuadro.setFrame(n), n), `setFrame(${n})`);
       await encoder.write(await tab.screenshot({ clip: { x: 0, y: 0, width, height } }));
       onProgress(n + 1, durationInFrames);
     }
@@ -68,10 +61,25 @@ export async function render({ page, out, props, audio, root = '.', onProgress =
     await mix(video, clips, fps, duration, out);
   } finally {
     encoder?.kill();
-    await browser.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    // Each is closed even if another fails; a failed close never hides the render's own error.
+    await Promise.allSettled([browser?.close(), server?.close(), dir && rm(dir, { recursive: true, force: true })]);
   }
+}
+
+/** A step runner for tab: a step fails on a page error, or after StepTimeout, instead of hanging. */
+function guarded(tab) {
+  const failed = new Promise((_, reject) => tab.on('pageerror', (e) => reject(new Error(`cuadro: page error: ${e.message}`))));
+  failed.catch(() => {});
+  return (promise, what) => Promise.race([within(promise, StepTimeout, what), failed]);
+}
+
+/** The page's window.cuadro, checked: whole sizes and length above 0, even sizes for H.264, a rate above 0. */
+function sized(c) {
+  if (![c.width, c.height, c.durationInFrames].every((n) => Number.isInteger(n) && n > 0) || !(Number.isFinite(c.fps) && c.fps > 0)) {
+    throw new Error('cuadro: width, height and durationInFrames must be whole numbers above 0, and fps a number above 0');
+  }
+  if (c.width % 2 || c.height % 2) throw new Error('cuadro: width and height must be even for H.264');
+  return c;
 }
 
 /** A clip from the page, whose numbers go into ffmpeg's filter graph: anything but plain numbers is an error. */
