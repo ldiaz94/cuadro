@@ -149,9 +149,43 @@ Don't use `Date.now`, `Math.random` without a seed,
 the video needs before calling `composition`, except fonts and `<img>`,
 which cuadro waits for.
 
+### Make a video from a prompt
+
+`cuadro make` asks a language model to write the video for you:
+
+```sh
+ANTHROPIC_API_KEY=... npx cuadro make "a ten-second title card for a bakery" --provider anthropic
+```
+
+The model gets cuadro's types and this guide, and replies with a whole
+`video.js`. cuadro writes it, with an `index.html`, into `--out` (default
+`make-out`, which must be under the working directory), and opens it in
+Chromium. A page error, a failed frame, or five sample frames that are
+all the same go back to the model to fix. A file that runs is sent back
+as five screenshots for review: the model answers `OK` or a better file.
+It stops at `OK` or after `--rounds` revisions (default 3), and keeps the
+last file that ran. Progress goes to stderr; at the end it says how to
+preview and render the result.
+
+| `--provider` | key from the environment | default model |
+|---|---|---|
+| `anthropic` | `ANTHROPIC_API_KEY` | `claude-opus-5-5` |
+| `gemini` | `GEMINI_API_KEY` | `gemini-4-hydrogen` |
+| `openai` | `OPENAI_API_KEY` (optional for local servers); `OPENAI_BASE_URL` (default `https://api.openai.com/v1`) | `gpt-6.2-astra` |
+
+`--model` picks another model. With `--voice-provider p` (and
+`--voice v`), the model first writes a narration script, `cuadro voice`
+speaks it into `<out>/voice`, and the video's scenes follow the lines'
+lengths. From Node, `make({ prompt, provider, model, out, rounds,
+voiceProvider, voice, onStep })` in `cuadro/make` does the same.
+
+The result is a source file: read it, edit it and commit it like any
+other video. Every round is a paid request to the provider, and
+narration also pays for speech.
+
 ## How it works
 
-Seven ideas, a module each:
+Eight ideas, a module each:
 
 1. **Time is a signal** ([`src/composition.js`](src/composition.js)). The
    composition owns `frame`, and everything drawn is computed from it.
@@ -202,6 +236,13 @@ Seven ideas, a module each:
    API's message but never a header. `voice()` hashes provider, voice,
    model and text for each line and skips the lines whose hash and file
    are unchanged.
+8. **A prompt is a loop** ([`src/make.js`](src/make.js), with
+   [`src/llm.js`](src/llm.js)). Each provider is a small `fetch` adapter
+   that sends a conversation, with screenshots as PNG images, and returns
+   the reply's text. `make()` keeps the whole conversation: it writes
+   the model's `video.js`, opens it in Chromium, shoots five frames, and
+   sends back either the problem or the frames for review, until the
+   model says `OK` or the rounds run out.
 
 ## Tests
 
@@ -234,6 +275,12 @@ others run in Chromium and ffmpeg against
   never heard; `--audio` plays together with the clips; the same input
   gives the same decoded audio twice; in the preview, a clip is an
   `<audio>` element while it is mounted, and seeks with the scrubber.
+- make, against a fake model (no test calls a real API): each provider's
+  URL, headers and body, with images before the text; Anthropic's
+  refusal and cut-off replies; an error that leaves out the key; a file
+  that throws sent back with its error, then a working file and `OK`
+  (three requests, the working file kept); a reply with no `js` block;
+  narration spoken from the model's script, its voice.json handed back.
 
 `npm run types` type-checks the declarations against
 [`test/types.ts`](test/types.ts).
@@ -253,11 +300,13 @@ Lines of code, not counting comments or blank lines:
 | `src/serve.js` | 32 |
 | `src/chromium.js` | 19 |
 | `src/index.js` | 5 |
-| `src/http.js` | 30 |
-| `src/speech.js` | 86 |
-| `src/voice.js` | 55 |
-| `bin/cuadro.js` | 82 |
-| **total** | **588** |
+| `src/http.js` | 33 |
+| `src/speech.js` | 91 |
+| `src/voice.js` | 59 |
+| `src/llm.js` | 95 |
+| `src/make.js` | 179 |
+| `bin/cuadro.js` | 113 |
+| **total** | **925** |
 
 The only dependencies are spark and playwright-core, plus ffmpeg from
 the system.
