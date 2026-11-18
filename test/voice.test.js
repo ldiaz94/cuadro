@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { voice } from '../src/voice.js';
 import { wav } from '../src/speech.js';
 import { fakeServer } from './fake-server.js';
@@ -74,4 +76,50 @@ test('bad scripts are rejected before any request', async () => {
     const { script, out } = await setup(lines);
     await assert.rejects(voice({ script, out, provider: 'openai', baseUrl: 'http://127.0.0.1:1' }), message);
   }
+});
+
+/** A 1.2 s WAV: 0.5 s of silence, then 0.7 s of a 440 Hz tone (36 frames at 30 fps). */
+async function silenceThenTone(dir) {
+  const file = join(dir, 'tone.wav');
+  await promisify(execFile)('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=0.7:sample_rate=16000', '-af', 'adelay=500:all=1', file]);
+  return readFile(file);
+}
+
+test('levels: ceil(seconds * fps) of them, silence ~0, a tone ~1, 2 decimals', async () => {
+  const { dir, script, out } = await setup([{ id: 'a', text: 'One' }]);
+  const s = await fakeServer([{ body: await silenceThenTone(dir) }]);
+  const { lines: [line] } = await voice({ script, out, provider: 'openai', baseUrl: s.url });
+  assert.equal(line.levels.length, Math.ceil(line.seconds * 30));
+  assert.ok(line.levels.slice(0, 13).every((v) => v < 0.05), 'silence');
+  assert.ok(line.levels.slice(17, 33).every((v) => v > 0.95), 'tone');
+  assert.equal(Math.max(...line.levels), 1);
+  assert.ok(line.levels.every((v) => v === Math.round(v * 100) / 100));
+
+  const fast = await voice({ script, out, provider: 'openai', baseUrl: s.url, fps: 10 });
+  assert.equal(fast.lines[0].levels.length, Math.ceil(line.seconds * 10));
+  assert.equal(JSON.parse(await readFile(join(out, 'voice.json'), 'utf8')).fps, 10);
+  assert.equal(s.requests.length, 1, 'a new fps does not speak again');
+  await s.close();
+});
+
+test('levels: a silent line stays all zeros', async () => {
+  const { script, out } = await setup([{ id: 'a', text: 'One' }]);
+  const s = await fakeServer([{ body: half }]);
+  const { lines: [line] } = await voice({ script, out, provider: 'openai', baseUrl: s.url });
+  assert.deepEqual(line.levels, new Array(15).fill(0));
+  await s.close();
+});
+
+test('a cached line without levels gains them with no request', async () => {
+  const { dir, script, out } = await setup([{ id: 'a', text: 'One' }]);
+  const s = await fakeServer([{ body: await silenceThenTone(dir) }]);
+  await voice({ script, out, provider: 'openai', baseUrl: s.url });
+  const path = join(out, 'voice.json');
+  const old = JSON.parse(await readFile(path, 'utf8'));
+  delete old.lines[0].levels;
+  await writeFile(path, JSON.stringify(old));
+  const again = await voice({ script, out, provider: 'openai', baseUrl: s.url });
+  assert.equal(s.requests.length, 1);
+  assert.equal(again.lines[0].levels.length, 36);
+  await s.close();
 });
