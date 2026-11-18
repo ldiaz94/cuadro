@@ -35,7 +35,7 @@ browser (`npx playwright install chromium`), then `chromium` on the
 `PATH`.
 
 ```sh
-npm install github:ldiaz94/cuadro#v0.4.0
+npm install github:ldiaz94/cuadro#v0.5.0
 npx cuadro render video.html out.mp4
 ```
 
