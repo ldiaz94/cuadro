@@ -209,9 +209,12 @@ ${Object.entries(themes).map(([name, t]) => `  - ${name}: background ${t['--bg']
 
 # Writing a good video
 
-- Five to seven scenes. Open with a title or kinetic scene that hooks; end with an endCard.
-- Put key words on screen, never the narration itself: short headlines, a few words per item.
-  Mark one or two key words per headline with *asterisks*.
+- Five to seven scenes, telling a story: a hook (a kinetic or title scene that names the viewer's
+  problem), why it matters (a stat with a real figure, or kinetic lines), how it works (steps), the
+  one idea that sets this apart (often the code scene), what you get (tiles), and an endCard.
+- Put key words on screen, never the narration itself: headlines of a few words, item titles of
+  one to three words, item texts of at most five. Mark one or two key words per headline with
+  *asterisks*.
 - Vary the scenes: don't use the same type twice in a row.
 - Use only facts the request gives or that you are sure of; never invent figures for a stat scene.
 - Prefer designed scenes; they are tested and look good. Write a code scene (at most two) only when
