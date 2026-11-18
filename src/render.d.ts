@@ -4,7 +4,7 @@
 export function render(options: {
   /** The page's file path; it must be under root. */
   page: string;
-  /** The mp4 to write. */
+  /** The mp4 to write; when the page sets window.cuadro.captions, they go beside it as an .srt. */
   out: string;
   /** Merged over the composition's default props. */
   props?: object;
@@ -35,3 +35,6 @@ export function still(options: {
   /** Frames per row of the contact sheet (default: the number of frames, at most 4). */
   columns?: number;
 }): Promise<void>;
+
+/** Subtitles as SubRip (.srt) text. */
+export function srt(captions: { start: number; end: number; text: string }[]): string;

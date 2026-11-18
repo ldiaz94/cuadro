@@ -1,5 +1,6 @@
 // Types for cuadro/player, written by hand beside src/player.js.
 import type { Composition, View } from './index.js';
+import type { Word } from './level.js';
 
 /** Plays a scene script: fetches script.json and voice.json (null for no narration), and makes the composition. */
 export function player(options?: { script?: string; voice?: string | null; width?: number; height?: number }): Promise<Composition>;
@@ -14,8 +15,8 @@ export const MusicVolume: number;
  * It draws inside the themed stage, so it styles with the theme's custom properties (var(--accent),
  * var(--t-2), sizes in cqmin, cqw and cqh) and may reuse the designed scenes' classes (cq-kicker,
  * cq-head, cq-display, and cq-mark with --w from 0 to 1 for its sweep). It moves for its whole
- * length, and can move to its narration with level(levels, t.frame()). It imports only from
- * 'cuadro', 'cuadro/scenes' and 'cuadro/level'.
+ * length, and can move to its narration with level(levels, t.frame()), or light things up as they
+ * are said with word(words, t.frame(), fps). It imports only from 'cuadro', 'cuadro/scenes' and 'cuadro/level'.
  *
  * @example
  * import { html, interpolate } from 'cuadro';
@@ -37,6 +38,8 @@ export interface CodeScene {
   length: number;
   /** Its line's loudness, one 0-to-1 number per frame from the scene's start; empty without narration. */
   levels: number[];
+  /** Its line's words and when each is said, in seconds from the scene's start; empty without narration. word() from 'cuadro/level' gives the one being said. */
+  words: Word[];
   /** Its narration line, if it has one. */
   say?: string;
   /** Frames per second. */

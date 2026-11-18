@@ -16,6 +16,8 @@
 // than two frames each ahead, so memory stays bounded. Clips need every
 // frame visited in order, so an extra tab walks the frames without
 // screenshots and its clips are the ones mixed.
+// When the page sets window.cuadro.captions (the player does, for a script
+// with captions), they are written beside out as an .srt.
 // still() renders only some frames: one is a PNG, several a contact sheet.
 // Depends on playwright-core (through chromium.js), serve.js, and ffmpeg
 // on the PATH. Leaves out other codecs and containers, transparency, and
@@ -39,6 +41,16 @@ const OverrunSeconds = 1;
 
 /** How many frames each worker may be ahead of the one ffmpeg is waiting for: bounds the frames held in memory. */
 const AheadPerWorker = 2;
+
+/** Subtitles as SubRip text: numbered cues, each with its times (00:00:01,250 --> 00:00:03,000) and its text. */
+export function srt(captions) {
+  const time = (s) => {
+    const ms = Math.round(s * 1000);
+    const pad = (n, w = 2) => String(n).padStart(w, '0');
+    return `${pad(Math.floor(ms / 3600000))}:${pad(Math.floor(ms / 60000) % 60)}:${pad(Math.floor(ms / 1000) % 60)},${pad(ms % 1000, 3)}`;
+  };
+  return captions.map(({ start, end, text }, i) => `${i + 1}\n${time(start)} --> ${time(end)}\n${text}\n`).join('\n');
+}
 
 /** Renders page (a file under root) to out; onProgress(done, total) after each frame, in order. */
 export async function render({ page, out, props, audio, root = '.', workers = defaultWorkers(), onProgress = () => {} }) {
@@ -74,6 +86,8 @@ export async function render({ page, out, props, audio, root = '.', workers = de
       const clips = (await walker.tab.evaluate(() => window.cuadro.clips)).map((c) => ({ ...checked(c), file: fileOf(c.src, origin, root) }));
       if (audio) clips.push({ file: audio, from: 0, volume: 1 });
       await mix(video, clips, fps, duration, out);
+      const captions = await walker.tab.evaluate(() => window.cuadro.captions);
+      if (Array.isArray(captions) && captions.length) await writeFile(out.replace(/(\.\w+)?$/, '.srt'), srt(captions));
     });
   } finally {
     encoder?.kill();

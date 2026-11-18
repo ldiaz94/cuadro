@@ -20,6 +20,10 @@
       "types": "./src/level.d.ts",
       "default": "./src/level.js"
     },
+    "./captions": {
+      "types": "./src/captions.d.ts",
+      "default": "./src/captions.js"
+    },
     "./script": {
       "types": "./src/script.d.ts",
       "default": "./src/script.js"

@@ -12,5 +12,8 @@ export type Theme = Record<`--${string}`, string>;
 
 /** Each theme's colours and fonts (the type scale and spacing are shared). */
 export const themes: Record<ThemeName, Theme>;
-/** The custom properties of theme `name` (default 'light'), with the brand's accents over it; loads the fonts. */
-export function theme(name?: ThemeName, brand?: Brand): Theme;
+/**
+ * The custom properties of theme `name` (default 'light'), with the brand's accents over it; loads the fonts.
+ * `font` is the URL of a font file every font stack falls back to, for letters the bundled Latin fonts lack.
+ */
+export function theme(name?: ThemeName, brand?: Brand, options?: { font?: string }): Theme;

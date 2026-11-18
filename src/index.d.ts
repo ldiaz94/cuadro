@@ -65,6 +65,8 @@ export interface Composition {
   clips: Clip[];
   /** Shows frame n; resolves once fonts and images are ready, rejects if an image fails. */
   setFrame(n: number): Promise<void>;
+  /** Subtitles, in seconds; when set (the player sets them for `captions: true`), render writes them beside the mp4 as .srt. */
+  captions?: { start: number; end: number; text: string }[];
 }
 /** Mounts view(frame, props) on a stage and makes the page renderable (and previewable). */
 export function composition<P extends object = Record<string, unknown>>(options: {

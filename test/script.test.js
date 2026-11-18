@@ -20,6 +20,21 @@ const good = () => ({
   ],
 });
 
+test('check: language, captions and font; letters the fonts lack fail unless a font is named', () => {
+  const s = { ...good(), language: 'es', captions: true };
+  s.scenes[0].say = '¿Qué? Señal, œuvre.';
+  assert.equal(check(s), s);
+  assert.throws(() => check({ ...good(), language: 'Spanish' }), /^Error: language: expected a BCP-47 language code/);
+  assert.throws(() => check({ ...good(), captions: 'yes' }), /^Error: captions: expected true or false$/);
+  const ja = good();
+  ja.scenes[1].props.items[1].text = '天気';
+  assert.throws(() => check(ja), /^Error: scenes\[1\].props.items\[1\].text: "天" is not in cuadro's fonts/);
+  assert.equal(check({ ...ja, font: 'fonts/noto.woff2' }).font, 'fonts/noto.woff2');
+  const said = { ...good(), scenes: [{ type: 'title', props: { title: 'Hi' }, say: 'Привет' }] };
+  assert.equal(check(said), said, 'a line that is not shown may be in any script');
+  assert.throws(() => check({ ...said, captions: true }), /^Error: scenes\[0\].say: "П"/);
+});
+
 test('check: a good script passes, and each mistake names its path', () => {
   assert.deepEqual(check(good()), good());
   const broken = (change) => {
@@ -66,12 +81,12 @@ test('timing: lengths from voice.json plus air, defaults without a line, and nev
   assert.deepEqual(timing(good()).map((x) => x.length), [120, 165, 180, 120]);
 });
 
-test('the schema matches the scenes: each type is a scene whose props in scenes.d.ts are the schema\'s, plus length', async () => {
+test('the schema matches the scenes: each type is a scene whose props in scenes.d.ts are the schema\'s, plus length and words', async () => {
   const dts = await readFile(new URL('../src/scenes.d.ts', import.meta.url), 'utf8');
   for (const [name, { props }] of Object.entries(types)) {
     assert.equal(typeof scenes[name], 'function', name);
     const shape = dts.match(new RegExp(`export function ${name}\\(props: \\{([\\s\\S]*?)\\}\\): View;`))[1];
-    const keys = [...shape.matchAll(/(?:^\s*|[{;]\s*)(\w+)\??:/g)].map((m) => m[1]).filter((k) => !['value', 'prefix', 'suffix', 'label'].includes(k));
+    const keys = [...shape.matchAll(/(?:^\s*|[{;]\s*)(\w+)\??:/g)].map((m) => m[1]).filter((k) => !['value', 'prefix', 'suffix', 'label', 'words'].includes(k));
     assert.deepEqual(keys.sort(), ['length', ...Object.keys(props.props)].sort(), name);
   }
 });
@@ -122,6 +137,54 @@ export default ({ length, levels, say, fps }) => scene(length, () => html\`<p id
     assert.equal(await b.page.textContent('#got'), `${c} 60 Counting. 30`);
     const clips = await b.page.evaluate(() => window.cuadro.clips.map((c) => [c.src.split('/').pop(), c.from, c.volume]));
     assert.deepEqual(clips, [['music.wav', 0, MusicVolume], ['scene1.wav', froms[0], 1], ['scene2.wav', froms[1], 1], ['scene3.wav', froms[2], 1]]);
+    assert.deepEqual(b.errors, []);
+  } finally {
+    await b.close();
+  }
+});
+
+test('player: captions show the phrase being said with its word lit, above nothing, and are listed for the .srt', async (t) => {
+  const dir = await mkdtemp(join('test', 'tmp-captions-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await mkdir(join(dir, 'scenes'));
+  await mkdir(join(dir, 'voice'));
+  const words = (text) => text.split(' ').map((w, i) => ({ text: w, start: 0.2 + i * 0.4, end: 0.5 + i * 0.4 }));
+  const script = { captions: true, language: 'es', scenes: [
+    { type: 'steps', props: { items: [{ title: 'Uno' }, { title: 'Dos' }] }, say: 'Primero el uno, luego el dos.' },
+    { code: 'scenes/said.js', say: 'Y fin.' }] };
+  const voice = { fps: 30, lines: [
+    { id: 'scene1', file: 'a.wav', seconds: 2.5, words: words('Primero el uno, luego el dos.') },
+    { id: 'scene2', file: 'b.wav', seconds: 1, words: words('Y fin.') }] };
+  await writeFile(join(dir, 'script.json'), JSON.stringify(script));
+  await writeFile(join(dir, 'voice', 'voice.json'), JSON.stringify(voice));
+  await writeFile(join(dir, 'scenes', 'said.js'), `import { html } from 'cuadro';
+import { scene } from 'cuadro/scenes';
+export default ({ length, words }) => scene(length, () => html\`<p id="got">\${words.map((w) => w.text).join('|')}</p>\`);
+`);
+  await writeFile(join(dir, 'index.html'), await readFile(new URL('../demo/script/index.html', import.meta.url), 'utf8'));
+  const b = await open(`/${dir}/index.html?render`);
+  try {
+    await b.page.waitForFunction(() => window.cuadro);
+    const shown = (n) => b.page.evaluate(async (n) => {
+      await window.cuadro.setFrame(n);
+      const p = document.querySelector('.cq-captions p');
+      return p && [p.textContent, document.querySelector('.cq-said')?.textContent];
+    }, n);
+    assert.deepEqual(await shown(0), null);
+    assert.deepEqual(await shown(33), ['Primero el uno,', 'uno,']); // 1.1 s
+    assert.deepEqual(await shown(50), ['luego el dos.', 'luego']); // 1.67 s
+    // The scenes keep above the captions' band.
+    const gap = await b.page.evaluate(() => {
+      const list = document.querySelector('.cq-list').getBoundingClientRect();
+      return document.querySelector('.cq-stage').getBoundingClientRect().bottom - list.bottom;
+    });
+    assert.ok(gap >= 0.21 * 720, `the list ends ${gap}px above the bottom`);
+    const second = 75 + Air - Fade; // where scene 2 starts
+    assert.deepEqual(await shown(second + 20), ['Y fin.', 'fin.']);
+    assert.equal(await b.page.textContent('#got'), 'Y|fin.');
+    const listed = await b.page.evaluate(() => window.cuadro.captions);
+    assert.deepEqual(listed.map((c) => c.text), ['Primero el uno,', 'luego el dos.', 'Y fin.']);
+    assert.ok(Math.abs(listed[2].start - (second / 30 + 0.2)) < 1e-9);
     assert.deepEqual(b.errors, []);
   } finally {
     await b.close();

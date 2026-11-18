@@ -9,15 +9,24 @@ export interface Script {
   theme?: 'light' | 'bold' | 'dark';
   brand?: { accent?: string; accent2?: string; logo?: string };
   music?: string;
+  /** The language of its text, a BCP-47 code ("es", "pt-BR", "ja"). */
+  language?: string;
+  /** Burn the narration in as captions, and have render write an .srt beside the mp4. */
+  captions?: boolean;
+  /** A font file (relative to script.json) for letters the bundled Latin fonts lack. */
+  font?: string;
   scenes: ScriptScene[];
 }
 /** The parts of a voice.json that timing() reads. */
 export interface Narration {
   fps?: number;
-  lines: { id: string; file: string; seconds: number; levels?: number[] }[];
+  lines: { id: string; file: string; seconds: number; levels?: number[]; words?: { text: string; start: number; end: number }[] }[];
 }
 
-/** Returns script if it matches the schema; otherwise throws an error naming the bad path, e.g. `scenes[2].props.items: expected an array`. */
+/**
+ * Returns script if it matches the schema; otherwise throws an error naming the bad path, e.g. `scenes[2].props.items: expected an array`.
+ * Text with letters the bundled fonts lack fails too, unless the script names a `font`.
+ */
 export function check(script: unknown): Script;
 /** The id of scene i's line: `scene<i+1>`. */
 export function lineId(i: number): string;

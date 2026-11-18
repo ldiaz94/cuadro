@@ -1,6 +1,8 @@
 // cuadro theme: the look shared by every scene, as CSS custom properties.
-// theme(name, brand) returns the properties as a style object for a
-// stage element; scenes (and code scenes) read them with var(--name).
+// theme(name, brand, { font }) returns the properties as a style object
+// for a stage element; scenes (and code scenes) read them with var(--name).
+// font is the URL of a font file that every font stack falls back to,
+// for letters the bundled fonts lack (Japanese, Arabic, Hindi...).
 //
 //   colours  --bg --ink --muted --surface --line --accent --accent2 --on-accent
 //   fonts    --font-display --font-body --display-weight --tracking
@@ -16,7 +18,7 @@
 // Depends on nothing. Leaves out easing (motion is computed in JS from the
 // frame, see scenes.js, so CSS never animates), logos (a logo is an <img>,
 // which cuadro waits for, so it is a prop of the scene that shows it),
-// and fonts beyond the Latin subset.
+// and bundled fonts beyond Latin-1: other scripts need the font option.
 
 /** The fonts that ship with cuadro, as [family, file, weight range]. */
 const Fonts = [
@@ -50,14 +52,18 @@ export const themes = {
   },
 };
 
-/** Returns the custom properties of theme `name`, with a brand's accent colours (#rrggbb) over it. */
-export function theme(name = 'light', { accent, accent2 } = {}) {
+/** The family name the font option's file is loaded as. */
+const Fallback = 'cuadro-fallback';
+
+/** Returns the custom properties of theme `name`, with a brand's accent colours (#rrggbb) over it, and a fallback font file. */
+export function theme(name = 'light', { accent, accent2 } = {}, { font } = {}) {
   if (!(name in themes)) throw new Error(`theme: no theme named ${name}; try ${Object.keys(themes).join(', ')}`);
   for (const c of [accent, accent2]) {
     if (c !== undefined && !/^#[0-9a-f]{6}$/i.test(c)) throw new Error(`theme: ${c} is not a #rrggbb colour`);
   }
-  if (typeof document !== 'undefined') loadFonts();
+  if (typeof document !== 'undefined') loadFonts(font);
   const props = { ...Scale, ...themes[name] };
+  if (font) for (const key of ['--font-display', '--font-body']) props[key] = props[key].replace(', sans-serif', `, '${Fallback}', sans-serif`);
   if (accent) Object.assign(props, { '--accent': accent, '--on-accent': readableOn(accent) });
   if (accent2) props['--accent2'] = accent2;
   return props;
@@ -73,15 +79,16 @@ function readableOn(hex) {
   return luminance > 0.19 ? '#141414' : '#ffffff'; // 0.19: where the two contrasts are equal
 }
 
-/** Whether the fonts were added to this page yet. */
-let loaded = false;
+/** The font files added to this page so far. */
+const loaded = new Set();
 
-/** Adds the bundled fonts to the page and starts loading them, so document.fonts.ready waits for them. */
-function loadFonts() {
-  if (loaded) return;
-  loaded = true;
-  for (const [family, file, weight] of Fonts) {
-    const face = new FontFace(family, `url(${new URL(file, import.meta.url)})`, { weight });
+/** Adds the bundled fonts and the fallback font to the page, once each, and starts loading them, so document.fonts.ready waits for them. */
+function loadFonts(font) {
+  const faces = [...Fonts.map(([family, file, weight]) => [family, new URL(file, import.meta.url).href, weight]), ...(font ? [[Fallback, font, '100 900']] : [])];
+  for (const [family, url, weight] of faces) {
+    if (loaded.has(url)) continue;
+    loaded.add(url);
+    const face = new FontFace(family, `url(${url})`, { weight });
     document.fonts.add(face);
     face.load();
   }

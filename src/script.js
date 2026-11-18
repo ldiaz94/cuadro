@@ -2,12 +2,17 @@
 // narration, and what cuadro needs to know about it before playing it.
 //
 //   { "theme": "light", "brand": { "accent", "accent2", "logo" },
-//     "music": "music.wav",
+//     "music": "music.wav", "language": "es", "captions": true,
+//     "font": "fonts/noto-sans-jp.woff2",
 //     "scenes": [ { "type": "stat", "props": { ... }, "say": "..." },
 //                 { "code": "scenes/twin.js", "say": "..." } ] }
 //
 // check(script) checks a script against the schema below and names the bad
-// path in its error (`scenes[2].props.items: expected an array`). Each
+// path in its error (`scenes[2].props.items: expected an array`). It also
+// fails a script whose on-screen text (or `say` lines, with captions) has
+// letters beyond the bundled fonts' Latin set, unless it names a `font` to
+// fall back to, so no text renders as empty boxes or in whatever font the
+// machine has. Each
 // designed scene type lists its props, their limits and its length without
 // narration; the same table checks scripts and is shown to `cuadro make`'s
 // model. lines(script) gives the `say` lines as a voice script (scene i's
@@ -27,6 +32,8 @@ const Text = { type: 'string' };
 const Colour = { type: 'string', pattern: /^#[0-9a-f]{6}$/i, about: 'a #rrggbb colour' };
 /** Any finite number. */
 const Num = { type: 'number' };
+/** true or false. */
+const Bool = { type: 'boolean' };
 
 /** schema, but allowed to be missing. */
 const optional = (schema) => ({ ...schema, optional: true });
@@ -64,6 +71,9 @@ const Script = object({
   theme: optional({ type: 'string', oneOf: ThemeNames }),
   brand: optional(object({ accent: optional(Colour), accent2: optional(Colour), logo: optional(Text) })),
   music: optional(Text),
+  language: optional({ type: 'string', pattern: /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/, about: 'a BCP-47 language code like "es" or "pt-BR"' }),
+  captions: optional(Bool),
+  font: optional({ type: 'string', pattern: /\.(woff2?|ttf|otf)$/i, about: 'a font file (.woff2, .woff, .ttf or .otf)' }),
   scenes: array({ type: 'object' }, 1),
 });
 const Designed = object({ type: { type: 'string', oneOf: Object.keys(types) }, props: { type: 'object' }, say: optional(Text) });
@@ -81,7 +91,24 @@ export function check(script) {
     match(scene, Designed, at);
     match(scene.props, types[scene.type].props, `${at}.props`);
   });
+  if (!script.font) script.scenes.forEach((scene, i) => {
+    if (scene.props) covered(scene.props, `scenes[${i}].props`);
+    if (scene.say && script.captions) covered(scene.say, `scenes[${i}].say`);
+  });
   return script;
+}
+
+/** The letters the bundled fonts draw: Latin-1's, and the few Latin Extended ones they have. */
+const Drawn = /[\u0000-\u00ff\u0131\u0152\u0153]/;
+
+/** Throws if a string in value (a prop or a line; a logo path aside) has a letter the bundled fonts lack. */
+function covered(value, path) {
+  if (typeof value === 'string') {
+    const missing = [...value].find((c) => /\p{L}/u.test(c) && !Drawn.test(c));
+    if (missing) throw new Error(`${path}: "${missing}" is not in cuadro's fonts (Latin only); set "font" to a font file that has it, such as a Noto Sans`);
+  } else if (typeof value === 'object') {
+    for (const [key, v] of Object.entries(value)) if (key !== 'logo') covered(v, Array.isArray(value) ? `${path}[${key}]` : `${path}.${key}`);
+  }
 }
 
 /** Throws unless value matches schema; path names value in the message. */
@@ -96,6 +123,8 @@ function match(value, schema, path) {
     if (schema.oneOf && !schema.oneOf.includes(value)) fail(`one of ${schema.oneOf.join(', ')}, not ${JSON.stringify(value)}`);
   } else if (type === 'number') {
     if (!Number.isFinite(value)) fail('a number');
+  } else if (type === 'boolean') {
+    if (typeof value !== 'boolean') fail('true or false');
   } else if (type === 'array') {
     if (!Array.isArray(value)) fail('an array');
     const { min, max } = schema;
