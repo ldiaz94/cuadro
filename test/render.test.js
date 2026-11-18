@@ -87,6 +87,8 @@ test('still: one frame is a PNG at the composition size; several are a contact s
   assert.deepEqual([...execFileSync('ffmpeg', ['-v', 'error', '-i', join(dir, 's1.png'), '-vf', 'scale=1:1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'])], [120]);
   await still({ page, root, out: join(dir, 's3.png'), frames: [0, 10, 39], columns: 2 });
   assert.equal(size('s3.png'), '128,96');
+  await still({ page, root, out: join(dir, 's6.png'), frames: [0, 1, 2, 3, 4], columns: 4 }); // a last row of one: ffmpeg's clock runs to the 8th cell
+  assert.equal(size('s6.png'), '256,96');
   await still({ page, root, out: join(dir, 's4.png'), every: 1 }); // 40 frames at 10 fps: 4 frames, in a row
   assert.equal(size('s4.png'), '256,48');
   await assert.rejects(still({ page, root, out: join(dir, 's5.png'), frames: [40] }), /frames must be whole numbers from 0 to 39/);

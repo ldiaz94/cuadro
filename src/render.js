@@ -103,7 +103,7 @@ export async function still({ page, out, frames, every = 2, props, root = '.', c
     await ffmpeg([
       '-loglevel', 'error', '-y', '-framerate', '1', '-start_number', '0', '-i', join(dir, '%d.png'),
       '-vf', `tile=${across}x${rows}`, '-frames:v', '1', out,
-    ], list.length).end();
+    ], rows * across).end(); // tile waits for a full grid, so its clock runs to the last cell
   });
 }
 
