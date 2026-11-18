@@ -19,14 +19,17 @@ async function run(reply, args) {
   }
 }
 
-test('elevenlabs', async () => {
+test('elevenlabs: audio and word times from the character alignment, and the language', async () => {
   process.env.ELEVENLABS_API_KEY = 'k1';
-  const { out, req, body } = await run({ body: 'MP3' }, { provider: 'elevenlabs', voice: 'v9' });
+  const alignment = { characters: [...'Hi, you.'], character_start_times_seconds: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7], character_end_times_seconds: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] };
+  const reply = { body: JSON.stringify({ audio_base64: Buffer.from('MP3').toString('base64'), alignment }) };
+  const { out, req, body } = await run(reply, { provider: 'elevenlabs', voice: 'v9', language: 'pt-BR' });
   assert.equal(req.method, 'POST');
-  assert.equal(req.url, '/v1/text-to-speech/v9');
+  assert.equal(req.url, '/v1/text-to-speech/v9/with-timestamps');
   assert.equal(req.headers['xi-api-key'], 'k1');
-  assert.deepEqual(body, { text: 'Hello', model_id: 'eleven_multilingual_v2' });
+  assert.deepEqual(body, { text: 'Hello', model_id: 'eleven_multilingual_v2', language_code: 'pt' });
   assert.deepEqual([out.bytes.toString(), out.ext], ['MP3', 'mp3']);
+  assert.deepEqual(out.words, [{ text: 'Hi,', start: 0, end: 0.3 }, { text: 'you.', start: 0.4, end: 0.8 }]);
 });
 
 test('openai: OPENAI_API_KEY only for OpenAI, OPENAI_COMPAT_API_KEY for any other host', async () => {
@@ -72,6 +75,15 @@ test('qwen downloads the audio from the returned url, retrying a failure', async
   assert.deepEqual(body, { model: 'qwen3-tts-flash', input: { text: 'Hello', voice: 'Cherry' } });
   assert.deepEqual([out.bytes.toString(), out.ext], ['WAVDATA', 'wav']);
   assert.deepEqual(file.requests.map((r) => r.method), ['GET', 'GET']);
+  await file.close();
+});
+
+test('qwen names a language it knows, and leaves the rest to Auto', async () => {
+  process.env.DASHSCOPE_API_KEY = 'k4';
+  const file = await fakeServer([{ body: 'WAVDATA' }]);
+  const reply = { body: JSON.stringify({ output: { audio: { url: `${file.url}/a.wav` } } }) };
+  assert.equal((await run(reply, { provider: 'qwen', language: 'es-MX' })).body.input.language_type, 'Spanish');
+  assert.equal((await run(reply, { provider: 'qwen', language: 'nl' })).body.input.language_type, undefined);
   await file.close();
 });
 

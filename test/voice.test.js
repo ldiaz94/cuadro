@@ -136,3 +136,35 @@ test('a scene script speaks its say lines, and a bad one fails with its path', a
   await assert.rejects(voice({ script, out, provider: 'openai', baseUrl: s.url }), /scenes\[0\].props.title: missing/);
   await s.close();
 });
+
+test('words: estimated from the levels, kept when cached, regained with no request', async () => {
+  const { dir, script, out } = await setup([{ id: 'a', text: 'One, two.' }]);
+  const s = await fakeServer([{ body: await silenceThenTone(dir) }]);
+  const { lines: [line] } = await voice({ script, out, provider: 'openai', baseUrl: s.url });
+  assert.equal(line.wordsFrom, 'estimate');
+  assert.deepEqual(line.words.map((w) => w.text), ['One,', 'two.']);
+  assert.ok(line.words[0].start >= 0.45 && line.words[1].end <= 1.25, JSON.stringify(line.words));
+  const path = join(out, 'voice.json');
+  const old = JSON.parse(await readFile(path, 'utf8'));
+  delete old.lines[0].words;
+  await writeFile(path, JSON.stringify(old));
+  assert.deepEqual((await voice({ script, out, provider: 'openai', baseUrl: s.url })).lines[0].words, line.words);
+  assert.equal(s.requests.length, 1);
+  await s.close();
+});
+
+test('words: the provider\'s own times win, and the script\'s language goes to it and into the hash', async () => {
+  process.env.ELEVENLABS_API_KEY = 'k';
+  const alignment = { characters: [...'Hola'], character_start_times_seconds: [0.1, 0.2, 0.3, 0.4], character_end_times_seconds: [0.2, 0.3, 0.4, 0.45] };
+  const s = await fakeServer([{ body: JSON.stringify({ audio_base64: half.toString('base64'), alignment }) }]);
+  const { script, out } = await setup([{ id: 'a', text: 'Hola' }]);
+  await writeFile(script, JSON.stringify({ language: 'es', lines: [{ id: 'a', text: 'Hola' }] }));
+  const { lines: [line] } = await voice({ script, out, provider: 'elevenlabs', baseUrl: s.url });
+  assert.deepEqual([line.wordsFrom, line.words], ['elevenlabs', [{ text: 'Hola', start: 0.1, end: 0.45 }]]);
+  assert.equal(JSON.parse(s.requests[0].body).language_code, 'es');
+  await writeFile(script, JSON.stringify({ language: 'es-MX', lines: [{ id: 'a', text: 'Hola' }] }));
+  await voice({ script, out, provider: 'elevenlabs', baseUrl: s.url });
+  assert.equal(s.requests.length, 2, 'another language speaks again');
+  delete process.env.ELEVENLABS_API_KEY;
+  await s.close();
+});

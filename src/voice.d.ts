@@ -8,15 +8,26 @@ export interface VoiceLine {
   file: string;
   /** The audio's length in seconds. */
   seconds: number;
-  /** sha256 of provider, voice, model and text; the cache key. */
+  /** sha256 of provider, address, voice, model, text and language; the cache key. */
   hash: string;
   /** Loudness per video frame, 0 to 1 (2 decimals), ceil(seconds * fps) numbers; the line's loudest frame is 1. */
   levels: number[];
+  /** When each word is said, in seconds from the line's start. */
+  words: Word[];
+  /** Where the times came from: the provider's own ("elevenlabs") or "estimate", a guess from the levels. */
+  wordsFrom: string;
+}
+
+/** A spoken word: its text (with the punctuation touching it) and when it is said, in seconds. */
+export interface Word {
+  text: string;
+  start: number;
+  end: number;
 }
 
 /** Turns a script of lines into audio files and a voice.json; unchanged lines are not spoken again. */
 export function voice(options: {
-  /** The script file: { "lines": [{ "id", "text" }] }. */
+  /** The script file: { "lines": [{ "id", "text" }], "language"? }, or a scene script. */
   script: string;
   /** The output directory (default: "voice"). */
   out?: string;

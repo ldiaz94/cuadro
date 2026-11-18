@@ -1,17 +1,24 @@
 // cuadro voice: turns a script of lines into one audio file per line, and a
 // voice.json listing them with their lengths and loudness.
-// The script is { "lines": [{ "id", "text" }] }, or a scene script
-// (script.js), whose `say` lines are spoken with ids scene1, scene2...
+// The script is { "lines": [{ "id", "text" }], "language" }, or a scene
+// script (script.js), whose `say` lines are spoken with ids scene1,
+// scene2...; its language, if any, goes to the provider.
 // Line <id> becomes
 // <out>/<id>.<ext>, and <out>/voice.json is { fps, lines: [{ id, file,
-// seconds, hash, levels }] }, where hash covers the provider, its API
-// address, the voice, the model and the text. levels is the line's loudness,
+// seconds, hash, levels, words, wordsFrom }] }, where hash covers the
+// provider, its API address, the voice, the model, the text and the
+// language. levels is the line's loudness,
 // one number from 0 to 1 per video frame (ceil(seconds * fps) of them, 2
 // decimals, the loudest frame of the line being 1), so a scene can move to
-// the narration (see level.js). A line whose hash and file are unchanged is
+// the narration (see level.js). words is when each word is said,
+// [{ text, start, end }] in seconds (timings.js), and wordsFrom where that
+// came from: the provider's own timings ("elevenlabs") or "estimate", a
+// guess from the levels. A line whose hash and file are unchanged is
 // not spoken again, so editing one line costs one request; it only gets its
-// levels redone if they are missing or were made for another fps.
-// Depends on speech.js, script.js, and ffprobe and ffmpeg on the PATH. Leaves out
+// levels redone if they are missing or were made for another fps, and its
+// words if they are missing or were estimated from levels redone.
+// Depends on speech.js, script.js, timings.js, and ffprobe and ffmpeg on
+// the PATH. Leaves out
 // deleting the files of lines removed from the script.
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -21,29 +28,37 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { check, lines as sceneLines } from './script.js';
 import { address, defaults, speak } from './speech.js';
+import { estimate } from './timings.js';
 
 /** Speaks every line of the script into out, with levels at fps; onLine({ id, index, total, skipped }) after each. */
 export async function voice({ script, out = 'voice', provider, voice: voiceName, model, baseUrl, fps = 30, onLine = () => {} }) {
   const source = JSON.parse(await readFile(script, 'utf8'));
   const { lines } = checked(source?.scenes ? sceneLines(check(source)) : source);
+  const language = source.language;
   const chosen = { voice: voiceName ?? defaults[provider]?.voice, model: model ?? defaults[provider]?.model };
   await mkdir(out, { recursive: true });
   const { fps: oldFps, lines: oldLines } = await readManifest(out);
   const previous = new Map(oldLines.map((l) => [l.id, l]));
   const manifest = [];
   for (const [index, { id, text }] of lines.entries()) {
-    const hash = createHash('sha256').update([provider, address(provider, baseUrl), chosen.voice, chosen.model, text].join('\0')).digest('hex');
+    // The language joins the hash only when given, so lines voiced before it existed stay cached.
+    const key = [provider, address(provider, baseUrl), chosen.voice, chosen.model, text, ...(language ? [language] : [])];
+    const hash = createHash('sha256').update(key.join('\0')).digest('hex');
     const old = previous.get(id);
     const skipped = old?.hash === hash && existsSync(join(out, old.file));
     if (skipped) {
       const stale = !Array.isArray(old.levels) || oldFps !== fps;
-      manifest.push(stale ? { ...old, levels: await levels(join(out, old.file), old.seconds, fps) } : old);
+      const line = stale ? { ...old, levels: await levels(join(out, old.file), old.seconds, fps) } : old;
+      const guess = !Array.isArray(line.words) || (stale && line.wordsFrom === 'estimate');
+      manifest.push(guess ? { ...line, words: estimate(text, line.levels, fps, language), wordsFrom: 'estimate' } : line);
     } else {
-      const { bytes, ext } = await speak({ provider, text, baseUrl, ...chosen });
+      const { bytes, ext, words } = await speak({ provider, text, baseUrl, language, ...chosen });
       const file = `${id}.${ext}`;
       await writeFile(join(out, file), bytes);
       const seconds = await duration(join(out, file));
-      manifest.push({ id, file, seconds, hash, levels: await levels(join(out, file), seconds, fps) });
+      const loudness = await levels(join(out, file), seconds, fps);
+      const timed = words ? { words, wordsFrom: provider } : { words: estimate(text, loudness, fps, language), wordsFrom: 'estimate' };
+      manifest.push({ id, file, seconds, hash, levels: loudness, ...timed });
     }
     // Saved after every line, so a failure later keeps the work done.
     await writeFile(join(out, 'voice.json'), JSON.stringify({ fps, lines: manifest }, null, 2) + '\n');
