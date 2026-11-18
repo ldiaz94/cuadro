@@ -22,8 +22,8 @@ export interface SceneTime {
   /** 0 to 1, eased, from frame a to frame b. */
   between(a: number, b: number): number;
 }
-/** A scene of `length` frames that fades in and out and drifts; for scenes written as code. */
-export function scene(length: number, body: (t: SceneTime) => Child, className?: string): View;
+/** A scene of `length` frames that fades in and out (fadeOut: false holds the end) and drifts; for scenes written as code. */
+export function scene(length: number, body: (t: SceneTime) => Child, options?: { className?: string; fadeOut?: boolean }): View;
 
 /** Text where *words* between asterisks are marked, and a newline breaks the line. */
 export type Marked = string;
@@ -35,9 +35,9 @@ export interface Item {
 
 /** A kicker, a headline word by word, a mark swept under *words*, and a sub line. */
 export function title(props: { length: number; kicker?: string; title: Marked; sub?: string }): View;
-/** Short lines, one per beat, each pushing the last away. */
+/** Two to four short lines, one per beat, each below the last, which dims. */
 export function kinetic(props: { length: number; lines: Marked[] }): View;
-/** 1 to 3 numbers, each counting up in its own beat. */
+/** 1 to 3 numbers in rows, each counting up in its own beat. */
 export function stat(props: {
   length: number;
   title?: string;
@@ -47,5 +47,5 @@ export function stat(props: {
 export function steps(props: { length: number; title?: string; items: Item[] }): View;
 /** 2 to 6 tiles, with a highlight moving through them, one per beat. */
 export function tiles(props: { length: number; title?: string; items: Item[] }): View;
-/** A logo (image URL), a line, a call to action and a URL, arriving one per beat. */
+/** A logo (image URL) and a line, then a call to action and a URL; held to the end, with no fade-out. */
 export function endCard(props: { length: number; logo?: string; line: Marked; cta?: string; url?: string }): View;

@@ -57,14 +57,16 @@ async function problems(page) {
           if (text && parseFloat(style.fontSize) < 28) found.add(`${name}: ${style.fontSize} text "${el.textContent.trim()}"`);
           if (style.overflow === 'hidden' && el.scrollHeight > el.clientHeight + 1) found.add(`${name}: ${el.tagName} ${el.className} clips its content`);
         }
-        if (bottom - top < 0.45 * stage.height) found.add(`${name}: content fills only ${Math.round((100 * (bottom - top)) / stage.height)}% of the height`);
+        if (bottom - top < 0.6 * stage.height) found.add(`${name}: content fills only ${Math.round((100 * (bottom - top)) / stage.height)}% of the height`);
+        const off = (top + bottom) / 2 - (stage.top + stage.height / 2);
+        if (Math.abs(off) > 0.1 * stage.height) found.add(`${name}: content is ${Math.round((100 * off) / stage.height)}% off centre`);
       }
     }
     return [...found];
   });
 }
 
-test('scenes: text of 28 px or more, inside the frame, filling it, in landscape and portrait', async () => {
+test('scenes: text of 28 px or more, inside the frame, filling 60% of its height and centred, in landscape and portrait', async () => {
   for (const props of [{ theme: 'light' }, { theme: 'bold', portrait: true }]) {
     const b = await open(`/demo/scenes.html?render&props=${encodeURIComponent(JSON.stringify(props))}`);
     try {

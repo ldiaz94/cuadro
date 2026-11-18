@@ -5,11 +5,11 @@
 // a voice talks:
 //
 //   title    kicker, headline word by word, a mark swept under *words*, sub
-//   kinetic  short lines, one per beat, each replacing the last
-//   stat     1-3 numbers, each counting up in its beat, then dimmed
+//   kinetic  2-4 short lines, one per beat, each below the last, which dims
+//   stat     1-3 numbers in rows, each counting up in its beat, then dimmed
 //   steps    a list with a highlight moving down it, the current step large
 //   tiles    a grid with a highlight moving through it
-//   endCard  logo, a line, a call to action and a URL
+//   endCard  logo and a line, then a call to action and a URL, held to the end
 //
 //   0     Fade                                   length-Fade   length
 //   |fade in|-- beat 1 --|-- beat 2 --|-- beat 3 --|fade out|
@@ -84,13 +84,14 @@ export function stage(theme, view) {
 }
 
 /**
- * A scene of `length` frames: fades in over the second half of its first
- * Fade frames and out over the first half of its last, so in play() one
- * scene is gone before the next appears; it drifts slowly closer, and
- * calls body(t) with t.frame(), t.enter(at), a 0-to-1 spring released at
- * frame `at`, and t.between(a, b), 0 to 1 eased from frame a to frame b.
+ * A scene of `length` frames: fades in over frames 3 to 9 and out over
+ * the first 4 of its last Fade frames (unless `fadeOut` is false, for the
+ * last scene), so in play() the old scene is all but gone as the new one
+ * arrives, and the new one is in place well before the overlap ends. It drifts slowly closer, and calls body(t) with t.frame(),
+ * t.enter(at), a 0-to-1 spring released at frame `at`, and
+ * t.between(a, b), 0 to 1 eased from frame a to frame b.
  */
-export function scene(length, body, className = '') {
+export function scene(length, body, { className = '', fadeOut = true } = {}) {
   return (frame) => {
     const fps = currentComposition().fps;
     const t = {
@@ -99,7 +100,7 @@ export function scene(length, body, className = '') {
       between: (a, b) => interpolate(frame(), [a, b], [0, 1], { easing: easeInOut }),
     };
     return html`<section class=${`cq-scene ${className}`} style=${() => ({
-      opacity: interpolate(frame(), [Fade / 2, Fade, length - Fade, length - Fade / 2], [0, 1, 1, 0]),
+      opacity: Math.min(interpolate(frame(), [3, 9], [0, 1]), fadeOut ? interpolate(frame(), [length - Fade, length - Fade + 4], [1, 0]) : 1),
       transform: `scale(${interpolate(frame(), [0, length], [1, 1.035])})`,
     })}>${body(t)}</section>`;
   };
@@ -111,39 +112,41 @@ export function title({ length, kicker, title, sub }) {
   return scene(length, (t) => html`
     ${kicker && html`<p class="cq-kicker" style=${() => ({ ...rise(t.enter(head.from)), '--w': t.between(head.from, head.from + 20) })}>${kicker}</p>`}
     <h1 class="cq-display cq-hero">${words(title, t, head.from + 4, mark.from)}</h1>
-    ${sub && html`<p class="cq-sub" style=${() => rise(t.enter(end.from))}>${sub}</p>`}`, 'cq-title');
+    ${sub && html`<p class="cq-sub" style=${() => rise(t.enter(end.from))}>${sub}</p>`}`, { className: 'cq-title' });
 }
 
-/** Short lines, one per beat, each arriving word by word and pushed up by the next. */
+/** Two to four short lines, one per beat, each arriving word by word below the last, which dims. */
 export function kinetic({ length, lines }) {
   const windows = beats(length, lines.length);
   return scene(length, (t) => html`
     <div class="cq-lines">${lines.map((line, i) => {
       const { from, to } = windows[i];
       const last = i === lines.length - 1;
-      return html`<h2 class="cq-display cq-hero" style=${() => {
-        const out = last ? 0 : t.between(to - 8, to + 4);
-        return { opacity: 1 - out, transform: `translateY(${-10 * out}cqh)` };
-      }}>${words(line, t, from, from + 10)}</h2>`;
+      return html`<h2 class="cq-display cq-hero" style=${() => ({ opacity: 1 - (last ? 0 : 0.65 * t.between(to - 6, to + 6)) })}>
+        ${words(line, t, from, from + 10)}</h2>`;
     })}</div>
-    ${progress(t, windows)}`, 'cq-kinetic');
+    ${progress(t, windows)}`, { className: 'cq-kinetic' });
 }
 
-/** 1-3 numbers, `{ value, prefix, suffix, label }`, each counting up in its own beat. */
+/** How large the numbers are for 1, 2 or 3 of them, in --t-mega. */
+const StatSizes = [1.5, 0.95, 0.62];
+
+/** 1-3 numbers, `{ value, prefix, suffix, label }`, a row each, arriving together, each counting up in its own beat. */
 export function stat({ length, title, stats }) {
   if (!(stats.length >= 1 && stats.length <= 3)) throw new Error('stat: give one to three numbers');
   const windows = beats(length, stats.length);
   return scene(length, (t) => html`
     ${title && html`<h2 class="cq-display cq-head" style=${() => rise(t.enter(0))}>${title}</h2>`}
-    <div class="cq-figures" style=${{ '--n': stats.length }}>${stats.map(({ value, prefix = '', suffix = '', label }, i) => {
+    <div class="cq-figures" style=${{ '--k': StatSizes[stats.length - 1] }}>${stats.map(({ value, prefix = '', suffix = '', label }, i) => {
       const { from } = windows[i];
       const decimals = (String(value).split('.')[1] ?? '').length;
-      return html`<div class="cq-figure" style=${() => ({ ...rise(t.enter(from)), '--a': active(t, windows, i) })}>
-        <b class="cq-display">${prefix}${() => (value * t.between(from, from + 36)).toFixed(decimals)}${suffix}</b>
+      // display: contents, so the numbers share a column and the labels line up
+      return html`<div class="cq-figure" style=${() => ({ '--a': active(t, windows, i) })}>
+        <b class="cq-display" style=${() => rise(t.enter(2 + 4 * i))}>${prefix}${() => (value * t.between(from, from + 36)).toFixed(decimals)}${suffix}</b>
+        <p style=${() => rise(t.enter(4 + 4 * i))}>${label}</p>
         <i class="cq-rule"><i style=${() => ({ transform: `scaleX(${t.between(from + 6, from + 40)})` })}></i></i>
-        <p>${label}</p>
       </div>`;
-    })}</div>`, 'cq-stat');
+    })}</div>`, { className: 'cq-stat' });
 }
 
 /** A list of `{ title, text }` with a highlight moving down it, one step per beat, the current one shown large. */
@@ -156,10 +159,10 @@ export function steps({ length, title, items }) {
     <div class="cq-steps-body">
       <ol class="cq-list" style=${{ '--n': items.length }}>
         <i class="cq-pill" style=${() => ({ transform: `translateY(${100 * row(t)}%)` })}></i>
-        ${items.map((item, i) => html`<li style=${() => ({ ...rise(t.enter(3 + 4 * i)), opacity: Math.min(1, t.enter(3 + 4 * i)) * (0.45 + 0.55 * active(t, windows, i)) })}>
+        ${items.map((item, i) => html`<li style=${() => ({ ...rise(t.enter(1 + 3 * i)), opacity: Math.min(1, t.enter(1 + 3 * i)) * (0.45 + 0.55 * active(t, windows, i)) })}>
           <span class="cq-num">${i + 1}</span>${item.title}</li>`)}
       </ol>
-      <div class="cq-panel" style=${() => rise(t.enter(8))}>${items.map((item, i) => html`<div style=${() => {
+      <div class="cq-panel" style=${() => rise(t.enter(2))}>${items.map((item, i) => html`<div style=${() => {
         const { from, to } = windows[i]; // the old step leaves before the new one arrives
         const on = i === 0 ? 1 : t.between(from, from + 10), off = i === items.length - 1 ? 0 : t.between(to - 8, to);
         return { opacity: on - off, transform: `translateY(${4 * (1 - on) - 4 * off}cqh)` };
@@ -169,7 +172,7 @@ export function steps({ length, title, items }) {
         ${item.text && html`<p>${item.text}</p>`}
       </div>`)}
       ${progress(t, [{ from: 0, to: length - Fade }])}</div>
-    </div>`, 'cq-steps');
+    </div>`, { className: 'cq-steps' });
 }
 
 /** A grid of 2-6 `{ title, text }` tiles that arrive together, then a highlight moving through them, a tile per beat. */
@@ -181,18 +184,18 @@ export function tiles({ length, title, items }) {
     ${title && html`<h2 class="cq-display cq-head" style=${() => rise(t.enter(0))}>${title}</h2>`}
     <div class="cq-grid" style=${{ '--cols': columns }}>${items.map((item, i) => html`<div class="cq-tile" style=${() => {
       const a = active(t, windows, i);
-      const p = t.enter(4 + 3 * i);
+      const p = t.enter(1 + 2 * i);
       return { '--a': a, opacity: Math.min(1, p), transform: `translateY(${(1 - p) * 8 - 1.5 * a}cqh) scale(${1 + 0.025 * a})` };
     }}>
       <span class="cq-index">${String(i + 1).padStart(2, '0')}</span>
       <h3 class="cq-display">${item.title}</h3>
       ${item.text && html`<p>${item.text}</p>`}
-    </div>`)}</div>`, 'cq-tiles');
+    </div>`)}</div>`, { className: 'cq-tiles' });
 }
 
-/** The last word: a logo (an image URL), a line, a call to action and a URL, arriving one per beat. */
+/** The last word: a logo (an image URL) and a line, then a call to action and a URL, held to the end. */
 export function endCard({ length, logo, line, cta, url }) {
-  const [first, second, third] = beats(length, 3);
+  const [first, second] = beats(length, 2);
   return scene(length, (t) => html`
     ${logo && html`<img class="cq-logo" src=${logo} alt="" style=${() => ({ transform: `scale(${t.enter(first.from)})` })}>`}
     <h2 class="cq-display cq-line">${words(line, t, first.from + 6, second.from)}</h2>
@@ -200,12 +203,12 @@ export function endCard({ length, logo, line, cta, url }) {
       ...rise(t.enter(second.from)),
       '--s': ((t.frame() - second.from) % 75) / 30, // a sheen crosses it in 30 frames, every 75
     })}>${cta}</span>`}
-    ${url && html`<p class="cq-url" style=${() => rise(t.enter(third.from))}>${url}</p>`}`, 'cq-end');
+    ${url && html`<p class="cq-url" style=${() => rise(t.enter(second.from + 10))}>${url}</p>`}`, { className: 'cq-end', fadeOut: false });
 }
 
 /** Style for something rising into place as p goes from 0 to 1 (and a little past). */
 function rise(p) {
-  return { opacity: Math.min(1, Math.max(0, p)), transform: `translateY(${(1 - p) * 0.6}em)` };
+  return { opacity: Math.min(1, Math.max(0, p)), transform: `translateY(${(1 - p) * 5}cqh)` };
 }
 
 /** How much item i of windows is the current one: 0 to 1, easing over the change; the last stays on. */
@@ -266,23 +269,24 @@ const Css = `
 .cq-kicker { display: flex; align-items: center; gap: 2cqmin; margin-bottom: 4cqh; font-size: var(--t-small); font-weight: 650;
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
 .cq-kicker::before { content: ''; width: 7cqmin; height: 0.6cqmin; background: currentColor; transform-origin: left; transform: scaleX(var(--w)); }
-.cq-title .cq-hero { max-width: 14em; }
-.cq-sub { margin-top: 5cqh; max-width: 30em; font-size: var(--t-3); color: var(--muted); }
+.cq-title { justify-content: space-between; }
+.cq-title .cq-hero { margin-block: auto; max-width: 12em; font-size: calc(var(--t-hero) * 1.15); }
+.cq-sub { max-width: 26em; font-size: var(--t-3); color: var(--muted); }
 
-.cq-kinetic { align-items: center; text-align: center; }
-.cq-lines { display: grid; place-items: center; }
-.cq-lines > * { grid-area: 1 / 1; max-width: 12em; }
+.cq-lines { display: flex; flex-direction: column; gap: 3cqh; }
 .cq-progress { position: absolute; left: var(--pad-x); right: var(--pad-x); bottom: 6cqh; display: flex; gap: 1.2cqmin; }
 .cq-progress > i { flex: 1; height: 0.5cqmin; border-radius: 1cqmin; background: var(--line); overflow: hidden; }
 .cq-progress > i > i { display: block; height: 100%; background: var(--accent); transform-origin: left; }
 
-.cq-figures { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 5cqw; align-items: start; }
-.cq-figure b { display: block; font-size: calc(var(--t-mega) * (1.6 - 0.25 * var(--n))); line-height: 0.95;
-  color: color-mix(in srgb, var(--accent) calc(var(--a) * 100%), var(--line));
+.cq-figures { display: grid; grid-template-columns: auto 1fr; column-gap: 5cqw; align-items: center; }
+.cq-figure { display: contents; }
+.cq-figure b { font-size: min(calc(var(--t-mega) * var(--k)), 26cqw); line-height: 1;
+  color: color-mix(in srgb, var(--accent) calc(var(--a) * 100%), color-mix(in srgb, var(--ink) 30%, transparent));
   font-variant-numeric: tabular-nums; white-space: nowrap; }
-.cq-rule { display: block; height: 0.6cqmin; margin: 3cqh 0; background: var(--line); }
+.cq-rule { grid-column: 1 / -1; display: block; height: 0.5cqmin; margin: 2.4cqh 0; background: var(--line); }
+.cq-figure:last-child .cq-rule { display: none; }
 .cq-rule i { display: block; height: 100%; background: var(--accent2); transform-origin: left; }
-.cq-figure p { max-width: 16em; color: color-mix(in srgb, var(--ink) calc(var(--a) * 100%), var(--muted)); }
+.cq-figure p { font-size: var(--t-3); line-height: 1.2; color: color-mix(in srgb, var(--ink) calc(var(--a) * 100%), var(--muted)); }
 
 .cq-steps-body { display: grid; grid-template-columns: 1fr 1.15fr; gap: 5cqw; flex: 1 1 0; min-height: 0; }
 .cq-list { position: relative; display: grid; grid-template-rows: repeat(var(--n), 1fr); list-style: none; }
@@ -295,8 +299,8 @@ const Css = `
 .cq-panel { position: relative; display: grid; border-radius: var(--radius); background: var(--surface); padding: 5cqmin; }
 .cq-panel > div { grid-area: 1 / 1; display: flex; flex-direction: column; justify-content: center; }
 .cq-panel b { font-size: var(--t-2); color: var(--accent); }
-.cq-panel h3 { margin-top: 1cqh; font-size: var(--t-1); }
-.cq-panel p { margin-top: 2.5cqh; color: var(--muted); }
+.cq-panel h3 { margin-top: 1cqh; font-size: var(--t-hero); }
+.cq-panel p { margin-top: 2.5cqh; font-size: var(--t-3); line-height: 1.2; color: var(--muted); }
 .cq-panel .cq-progress { left: 5cqmin; right: 5cqmin; bottom: 4cqmin; }
 
 .cq-grid { display: grid; grid-template-columns: repeat(var(--cols), 1fr); grid-auto-rows: 1fr; gap: var(--gap); flex: 1 1 0; min-height: 0; }
@@ -305,8 +309,8 @@ const Css = `
   color: color-mix(in srgb, var(--on-accent) calc(var(--a) * 100%), var(--ink));
   box-shadow: 0 calc(var(--a) * 3cqh) calc(var(--a) * 6cqh) -2cqh #0000004d; }
 .cq-index { margin-bottom: auto; font-size: var(--t-small); font-weight: 700; color: color-mix(in srgb, currentColor calc(var(--a) * 100%), var(--accent)); }
-.cq-tile h3 { font-size: var(--t-3); }
-.cq-tile p { margin-top: 1.2cqh; font-size: var(--t-small); opacity: 0.75; }
+.cq-tile h3 { font-size: var(--t-2); }
+.cq-tile p { margin-top: 1cqh; line-height: 1.2; opacity: 0.75; }
 
 .cq-end { align-items: center; text-align: center; }
 .cq-logo { height: 18cqmin; width: auto; margin-bottom: 4cqh; }
@@ -318,8 +322,10 @@ const Css = `
 .cq-url { margin-top: 3.5cqh; color: var(--muted); font-weight: 600; }
 
 @container (orientation: portrait) {
-  .cq-figures { grid-template-columns: 1fr; gap: 5cqh; }
-  .cq-figure b { font-size: calc(var(--t-mega) * (1.3 - 0.15 * var(--n))); }
+  .cq-figures { grid-template-columns: 1fr; }
+  .cq-figure p { margin-top: 1cqh; }
+  .cq-logo { height: 30cqmin; }
+  .cq-line { font-size: var(--t-hero); }
   .cq-steps-body { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; gap: 3cqh; }
   .cq-grid { grid-template-columns: repeat(min(var(--cols), 2), 1fr); }
 }

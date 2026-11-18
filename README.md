@@ -137,14 +137,14 @@ add `?props={"theme":"bold"}` or `{"portrait":true}`.
 | `cuadro/scenes` | |
 |---|---|
 | `title({ length, kicker, title, sub })` | A kicker, the headline word by word, then a sub line. |
-| `kinetic({ length, lines })` | Short lines, one per beat, each pushing the last away, over progress bars. |
-| `stat({ length, title, stats })` | One to three `{ value, prefix, suffix, label }` numbers, each counting up in its beat while the others dim. |
+| `kinetic({ length, lines })` | Two to four short lines, one per beat, each arriving below the last, which dims; progress bars below. |
+| `stat({ length, title, stats })` | One to three `{ value, prefix, suffix, label }` numbers in rows, each counting up in its beat while the others dim. |
 | `steps({ length, title, items })` | A list of `{ title, text }` with a highlight moving down it, the current step shown large beside it. |
 | `tiles({ length, title, items })` | Two to six `{ title, text }` tiles, with a highlight moving through them. |
-| `endCard({ length, logo, line, cta, url })` | A logo (an image URL), a line, a call to action and a URL. |
+| `endCard({ length, logo, line, cta, url })` | A logo (an image URL) and a line, then a call to action and the URL from halfway, held to the last frame. |
 | `stage(theme, view)` | The themed frame, with a slowly drifting glow, and `view` on top. |
 | `play([length, view], ...)` | Scenes in order, each cross-fading into the next over `Fade` (12) frames. `playLength(...)` is its length. |
-| `scene(length, body, className)` | The frame of a scene written as code: fades and drift like the others. `body(t)` gets `t.frame`, `t.enter(at)` (a spring released at frame `at`) and `t.between(a, b)` (0 to 1, eased). |
+| `scene(length, body, { className, fadeOut })` | The frame of a scene written as code: fades and drift like the others (`fadeOut: false` for a last scene). `body(t)` gets `t.frame`, `t.enter(at)` (a spring released at frame `at`) and `t.between(a, b)` (0 to 1, eased). |
 | `beats(length, n)` | `n` back-to-back `{ from, to }` frame ranges up to the fade-out. Throws if one would be under 15 frames. |
 
 | `cuadro/theme` | |
@@ -333,9 +333,10 @@ Nine ideas, a module each:
    properties in container units (`cqmin`), so one stylesheet fits every
    frame size. The fonts ship with cuadro and load as `FontFace`s when
    `theme()` runs, so `setFrame` waits for them and text never falls
-   back to a system font. `play()` overlaps the scenes, and each fades out
-   in the first half of the overlap and in during the second, over a
-   backdrop that never stops.
+   back to a system font. `play()` overlaps the scenes by 12 frames:
+   the old one fades out over the first 4, the new one fades in over
+   frames 3 to 9 while its first items arrive, over a backdrop that never
+   stops. The last scene, the end card, does not fade out.
 
 ## Tests
 
@@ -389,7 +390,8 @@ others run in Chromium and ffmpeg against
   overlaps; a brand accent gets readable text on it, and bad theme names
   and colours fail. Every tenth frame of the demo, in landscape and
   portrait, has no text under 28 px, nothing outside the frame, nothing
-  clipped, and content spanning at least 45% of the height.
+  clipped, and content spanning at least 60% of the height, centred
+  within 10%.
 
 `npm run types` type-checks the declarations against
 [`test/types.ts`](test/types.ts).
@@ -414,10 +416,10 @@ Lines of code, not counting blank lines or comments:
 | `src/llm.js` | 88 |
 | `src/make.js` | 192 |
 | `src/theme.js` | 55 |
-| `src/scenes.js` | 247 |
+| `src/scenes.js` | 249 |
 | `src/index.js` | 5 |
 | `bin/cuadro.js` | 114 |
-| **total** | **1240** |
+| **total** | **1242** |
 
 `scenes.js` counts its stylesheet, about 85 lines of CSS.
 
