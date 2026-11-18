@@ -17,3 +17,18 @@ void c.setFrame(0);
 const from: number = c.clips[0].from;
 void render({ page: 'demo/index.html', out: 'out.mp4', props: { title: 'x' }, onProgress: (done: number, total: number) => {} });
 void make({ prompt: 'a box', provider: 'anthropic', rounds: 2, onStep: (m: string) => {} }).then(({ file }) => file.length);
+
+import { theme, themes } from 'cuadro/theme';
+import { stage, play, playLength, scene, beats, Fade, title, kinetic, stat, steps, tiles, endCard } from 'cuadro/scenes';
+const look = theme('bold', { accent: '#ff3366' });
+const bg: string = themes.dark['--bg'];
+const clips: [number, View][] = [
+  [90, title({ length: 90, kicker: 'New', title: 'Hello *world*', sub: 'sub' })],
+  [90, kinetic({ length: 90, lines: ['one', 'two'] })],
+  [90, stat({ length: 90, title: 'Numbers', stats: [{ value: 9, suffix: 'x', label: 'more' }] })],
+  [90, steps({ length: 90, items: [{ title: 'a', text: 'b' }, { title: 'c' }] })],
+  [90, tiles({ length: 90, title: 'T', items: [{ title: 'a' }, { title: 'b' }] })],
+  [90, endCard({ length: 90, logo: 'logo.svg', line: 'Bye', cta: 'Go', url: 'x.example' })],
+  [60, scene(60, (t) => html`<b style=${() => ({ opacity: t.enter(beats(60, 2)[1].from) * t.between(0, Fade) })}>${t.frame}</b>`)],
+];
+composition({ width: 1280, height: 720, fps: 30, durationInFrames: playLength(...clips), view: (frame) => stage(look, play(...clips))(frame) });

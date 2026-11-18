@@ -8,6 +8,14 @@
       "types": "./src/index.d.ts",
       "default": "./src/index.js"
     },
+    "./theme": {
+      "types": "./src/theme.d.ts",
+      "default": "./src/theme.js"
+    },
+    "./scenes": {
+      "types": "./src/scenes.d.ts",
+      "default": "./src/scenes.js"
+    },
     "./render": {
       "types": "./src/render.d.ts",
       "default": "./src/render.js"
