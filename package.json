@@ -24,7 +24,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "demo": "node demo/music.js out/music.wav && node bin/cuadro.js render demo/index.html out/demo.mp4 --audio out/music.wav",
+    "gif": "ffmpeg -v error -y -i out/demo.mp4 -vf \"fps=15,scale=480:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer\" doc/img/demo.gif"
   },
   "license": "ISC",
   "dependencies": {
