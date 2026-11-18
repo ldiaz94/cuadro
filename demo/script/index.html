@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>cuadro script</title>
+<!-- In your own project, map these to /node_modules/cuadro/src/…. -->
+<script type="importmap">{ "imports": {
+  "spark": "/node_modules/spark/src/index.js", "cuadro": "/src/index.js", "cuadro/theme": "/src/theme.js",
+  "cuadro/scenes": "/src/scenes.js", "cuadro/level": "/src/level.js", "cuadro/player": "/src/player.js" } }</script>
+<script type="module">
+  import { player } from 'cuadro/player';
+  await player();
+</script>

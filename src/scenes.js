@@ -33,7 +33,7 @@ import { currentComposition } from './composition.js';
 export const Fade = 12;
 
 /** The shortest beat, in frames: enough for something to arrive and be seen. */
-const MinBeat = 15;
+export const MinBeat = 15;
 
 /** Splits [0, length - Fade) into n back-to-back beats, as { from, to } frames. */
 export function beats(length, n) {
