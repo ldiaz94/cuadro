@@ -5,7 +5,7 @@
 //     "music": "music.wav", "language": "es", "captions": true,
 //     "font": "fonts/noto-sans-jp.woff2",
 //     "scenes": [ { "type": "stat", "props": { ... }, "say": "..." },
-//                 { "code": "scenes/twin.js", "say": "..." } ] }
+//                 { "code": "scenes/twin.js", "props": { ... }, "say": "..." } ] }
 //
 // check(script) checks a script against the schema below and names the bad
 // path in its error (`scenes[2].props.items: expected an array`). It also
@@ -97,6 +97,7 @@ const Script = object({
 const Designed = object({ type: { type: 'string', oneOf: Object.keys(types) }, props: { type: 'object' }, say: optional(Text) });
 const Code = object({
   code: { type: 'string', pattern: /^scenes\/[A-Za-z0-9_-]+\.js$/, about: 'a module path like "scenes/name.js"' },
+  props: optional({ type: 'object' }),
   say: optional(Text),
 });
 

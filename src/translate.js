@@ -1,12 +1,13 @@
 // cuadro translate: a scene script in another language.
 // translate({ script, to, provider }) sends a language model the script's
-// words, its `say` lines and the designed scenes' text props, as one JSON
-// array, and puts the translations back in place. Everything else stays:
-// the structure, the brand, the numbers, logos, and the code scenes (only
-// their `say` lines change). It sets `language` and writes
+// words, its `say` lines and every scene's text props (code scenes keep
+// what they show in props too), as one JSON array, and puts the
+// translations back in place. Everything else stays: the structure, the
+// brand, the numbers, logos, images and the code scenes' modules. It sets `language` and writes
 // script.<to>.json beside the script, so the paths in it still resolve.
-// Depends on llm.js and script.js. Leaves out translating what a code
-// scene draws, and checking the translation beyond its shape.
+// Depends on llm.js and script.js. Leaves out text a code scene writes in
+// its module rather than its props, and checking the translation beyond
+// its shape.
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { chat } from './llm.js';
@@ -28,7 +29,7 @@ export async function translate({ script, to, provider, model, baseUrl }) {
 }
 
 /** The props that are paths, not words. */
-const Paths = ['logo'];
+const Paths = ['logo', 'image'];
 
 /** Every string to translate, as { get, set }: each scene's text props (by depth), then its say line. */
 function texts(script) {

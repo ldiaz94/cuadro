@@ -3,7 +3,7 @@
 /** One scene of a script: a designed scene with its props, or a code scene module; `say` is its narration line. */
 export type ScriptScene =
   | { type: 'title' | 'kinetic' | 'stat' | 'steps' | 'tiles' | 'app' | 'quote' | 'compare' | 'endCard'; props: Record<string, unknown>; say?: string }
-  | { code: string; say?: string };
+  | { code: string; props?: Record<string, unknown>; say?: string };
 /** A frame shape. */
 export type Format = '16:9' | '9:16';
 /** Each format's size in pixels: 1280x720 and 720x1280. */

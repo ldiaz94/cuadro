@@ -30,6 +30,9 @@ test('check: language, captions and font; letters the fonts lack fail unless a f
   ja.scenes[1].props.items[1].text = '天気';
   assert.throws(() => check(ja), /^Error: scenes\[1\].props.items\[1\].text: "天" is not in cuadro's fonts/);
   assert.equal(check({ ...ja, font: 'fonts/noto.woff2' }).font, 'fonts/noto.woff2');
+  const code = good();
+  code.scenes[2].props = { labels: ['Gemelo', '双子'] };
+  assert.throws(() => check(code), /^Error: scenes\[2\].props.labels\[1\]: "双" is not in cuadro's fonts/, 'a code scene\'s props are text on screen too');
   const said = { ...good(), scenes: [{ type: 'title', props: { title: 'Hi' }, say: 'Привет' }] };
   assert.equal(check(said), said, 'a line that is not shown may be in any script');
   assert.throws(() => check({ ...said, captions: true }), /^Error: scenes\[0\].say: "П"/);
@@ -54,7 +57,7 @@ test('check: a good script passes, and each mistake names its path', () => {
   assert.throws(broken((s) => (s.scenes[0].props.length = 90)), /^Error: scenes\[0\].props.length: unknown key; expected kicker, title, sub$/);
   assert.throws(broken((s) => delete s.scenes[3].props.line), /^Error: scenes\[3\].props.line: missing$/);
   assert.throws(broken((s) => (s.scenes[2].code = '../evil.js')), /^Error: scenes\[2\].code: expected a module path like "scenes\/name.js"$/);
-  assert.throws(broken((s) => (s.scenes[2].type = 'title')), /^Error: scenes\[2\].type: unknown key; expected code, say$/);
+  assert.throws(broken((s) => (s.scenes[2].type = 'title')), /^Error: scenes\[2\].type: unknown key; expected code, props, say$/);
   assert.throws(broken((s) => (s.scenes[0].say = 3)), /^Error: scenes\[0\].say: expected a non-empty string$/);
   assert.throws(broken((s) => (s.music = 3)), /^Error: music: expected a non-empty string$/);
   assert.throws(broken((s) => (s.format = '4:3')), /^Error: format: expected one of 16:9, 9:16, not "4:3"$/);
@@ -108,14 +111,14 @@ test('player: the demo script plays its scenes at their default lengths, with no
   }
 });
 
-test('player: lengths and audio from voice.json, and a code scene gets its line\'s levels', async (t) => {
+test('player: lengths and audio from voice.json, and a code scene gets its line\'s levels and its props', async (t) => {
   const dir = await mkdtemp(join('test', 'tmp-player-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   await mkdir(join(dir, 'scenes'));
   await mkdir(join(dir, 'voice'));
   const script = { music: 'music.wav', scenes: [
     { type: 'kinetic', props: { lines: ['One', 'Two'] }, say: 'One, two.' },
-    { code: 'scenes/count.js', say: 'Counting.' },
+    { code: 'scenes/count.js', props: { unit: 'beats' }, say: 'Counting.' },
     { type: 'endCard', props: { line: 'Bye' }, say: 'Bye.' }] };
   const voice = { fps: 30, lines: [
     { id: 'scene1', file: 'scene1.wav', seconds: 1.5 },
@@ -125,7 +128,7 @@ test('player: lengths and audio from voice.json, and a code scene gets its line\
   await writeFile(join(dir, 'voice', 'voice.json'), JSON.stringify(voice));
   await writeFile(join(dir, 'scenes', 'count.js'), `import { html } from 'cuadro';
 import { scene } from 'cuadro/scenes';
-export default ({ length, levels, say, fps }) => scene(length, () => html\`<p id="got">\${[length, levels.length, say, fps].join(' ')}</p>\`);
+export default ({ length, levels, say, fps, props }) => scene(length, () => html\`<p id="got">\${[length, levels.length, say, fps, props.unit].join(' ')}</p>\`);
 `);
   const html = await readFile(new URL('../demo/script/index.html', import.meta.url), 'utf8');
   await writeFile(join(dir, 'index.html'), html);
@@ -137,7 +140,7 @@ export default ({ length, levels, say, fps }) => scene(length, () => html\`<p id
     const froms = [0, a - Fade, a + c - 2 * Fade];
     for (const n of froms) await b.page.evaluate((n) => window.cuadro.setFrame(n), n);
     await b.page.evaluate(() => window.cuadro.setFrame(80));
-    assert.equal(await b.page.textContent('#got'), `${c} 60 Counting. 30`);
+    assert.equal(await b.page.textContent('#got'), `${c} 60 Counting. 30 beats`);
     const clips = await b.page.evaluate(() => window.cuadro.clips.map((c) => [c.src.split('/').pop(), c.from, c.volume]));
     assert.deepEqual(clips, [['music.wav', 0, MusicVolume], ['scene1.wav', froms[0], 1], ['scene2.wav', froms[1], 1], ['scene3.wav', froms[2], 1]]);
     assert.deepEqual(b.errors, []);

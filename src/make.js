@@ -3,7 +3,8 @@
 // The model gets the script format, the catalogue of designed scenes (their
 // doc comments and props from scenes.d.ts, their limits from script.js),
 // the themes, and the code-scene contract (player.d.ts), and replies with
-// script.json plus a module for each `code` scene. A logo, brand colours
+// script.json plus a module for each `code` scene, whose visible strings
+// go in its props so translate reaches them. A logo, brand colours
 // and music given to make are copied into the output folder and set over
 // every draft, so the model cannot drop them; so are a language, in which
 // the model writes the narration and the text on screen, and a format (9:16
@@ -262,7 +263,7 @@ its path (\`\`\`js scenes/orbit.js) and holds the whole module. Nothing else in 
 
 { "format": "${format}", "theme": "light", "brand": { "accent": "#rrggbb", "accent2": "#rrggbb", "logo": "logo.svg" },
   "scenes": [ { "type": "title", "props": { ... }, "say": "..." },
-              { "code": "scenes/name.js", "say": "..." } ] }
+              { "code": "scenes/name.js", "props": { ... }, "say": "..." } ] }
 
 - format: ${Object.keys(formats).join(' or ')}; keep "${format}".
 - theme: one of these (all scenes share it):
@@ -270,7 +271,7 @@ ${Object.entries(themes).map(([name, t]) => `  - ${name}: background ${t['--bg']
 - brand (optional): accent and accent2 replace the theme's accents; pick the brand's own colours
   when you know them, and make sure accent reads well on the theme's background. logo is an image
   path relative to script.json: give it only if the request names one.
-- scenes: designed scenes ({ type, props, say }) or code scenes ({ code, say }); no other keys.
+- scenes: designed scenes ({ type, props, say }) or code scenes ({ code, props, say }); no other keys.
 - say: the words spoken over that scene, one or two natural sentences. The scene lasts as long as
   its line (about 2.5 words a second), so the lines set the video's length.
 
@@ -300,10 +301,15 @@ ${Object.entries(themes).map(([name, t]) => `  - ${name}: background ${t['--bg']
   at least half the height, and its labels are var(--t-3) or larger. Plan it as three or four beats
   across its length (beats(length, n) from cuadro/scenes), each adding or changing something as the
   line says it (a headline that changes, a new element arriving, a highlight moving), so it tells a
-  small story.${portrait ? `
-- The frame is portrait: in a code scene, stack things top to bottom, use the full height, and keep
-  each label to a few words; it gets \`format\` ("${format}") to adapt.` : ''} Make the narration visible: something that pulses or a waveform of bars driven by
+  small story. Make the narration visible: something that pulses or a waveform of bars driven by
   level(levels, t.frame()).
+- Put every string a code scene shows (headlines, labels, names) in its props, e.g.
+  "props": { "title": "Your *twin*", "labels": ["CV review", "Interview prep"] }, and read them from
+  props in the module; never write visible text in the module itself, so the video can be translated.${portrait ? `
+- The frame is portrait: a code scene must fill the whole frame, top to bottom, as the designed
+  scenes do: stack things vertically, spread them over the full height (no empty top or bottom
+  half), make the main visual span the full width, and keep each label to a few words; it gets
+  \`format\` ("${format}") to adapt.` : ''}
 
 # Designed scenes
 

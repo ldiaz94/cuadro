@@ -27,9 +27,10 @@ export const MusicVolume: number;
  * import { scene } from 'cuadro/scenes';
  * import { level } from 'cuadro/level';
  *
- * export default ({ length, levels }) => scene(length, (t) => html`
- *   <p class="cq-kicker" style=${() => ({ opacity: Math.min(1, t.enter(0)), '--w': t.between(0, 20) })}>Listen</p>
- *   <h2 class="cq-display cq-head">Your voice, <span class="cq-mark" style=${() => ({ '--w': t.between(20, 40) })}>everywhere</span></h2>
+ * // in script.json: { "code": "scenes/voice.js", "props": { "kicker": "Listen", "title": "Your voice,", "mark": "everywhere" } }
+ * export default ({ length, levels, props }) => scene(length, (t) => html`
+ *   <p class="cq-kicker" style=${() => ({ opacity: Math.min(1, t.enter(0)), '--w': t.between(0, 20) })}>${props.kicker}</p>
+ *   <h2 class="cq-display cq-head">${props.title} <span class="cq-mark" style=${() => ({ '--w': t.between(20, 40) })}>${props.mark}</span></h2>
  *   <div style="display: flex; align-items: center; gap: 1.2cqmin; height: 40cqh">
  *     ${Array.from({ length: 24 }, (_, i) => html`<i style=${() => ({
  *       flex: '1', borderRadius: '1cqmin', background: 'var(--accent)',
@@ -50,4 +51,9 @@ export interface CodeScene {
   fps: number;
   /** The frame's shape; a portrait (9:16) frame is narrower, so stack what sits side by side. */
   format: Format;
+  /**
+   * The scene's props from the script ({ code, props, say }), {} if it has none. Every string the
+   * scene shows belongs here rather than in the module, so translate can put it in another language.
+   */
+  props: Record<string, any>;
 }

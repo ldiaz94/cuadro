@@ -259,7 +259,7 @@ out), or a code scene, a module of your own:
   "language": "en", "captions": true,
   "scenes": [
     { "type": "title", "props": { "title": "Notes that *find you*" }, "say": "Meet Lumen." },
-    { "code": "scenes/wave.js", "say": "Just say it out loud, and it's saved." },
+    { "code": "scenes/wave.js", "props": { "title": "Say it, and it's", "mark": "saved" }, "say": "Just say it out loud, and it's saved." },
     { "type": "endCard", "props": { "line": "Try it *today*", "url": "lumen.example" }, "say": "Try Lumen free." } ] }
 ```
 
@@ -301,7 +301,9 @@ and the smallest text is still 28.8 px.
 The player hands kinetic, steps, tiles, app and compare their line's
 words, so a step lights up as the narrator names it. A code scene's
 module exports a function that takes `{ length, levels, words, say, fps,
-format }` and returns a view, usually built with `scene()`. `levels` is
+format, props }` and returns a view, usually built with `scene()`.
+`props` are the scene's own from the script: keep the text it shows
+there, not in the module, so `translate` reaches it. `levels` is
 its line's loudness from voice.json, one number per frame, for
 `level(levels, frame)`, and `words` its words, for `word(words, frame,
 fps)`, the index of the word being said (both from `cuadro/level`).
@@ -402,11 +404,11 @@ GEMINI_API_KEY=... npx cuadro translate script.json --to es --provider gemini
 npx cuadro voice script.es.json --provider gemini --out voice.es
 ```
 
-`translate` sends the model the `say` lines and the designed scenes'
-text in one request, and writes `script.es.json` beside the script with
-the translations in place and `language` set. The rest stays as it is:
-the structure, the brand, numbers, logos, and the code scenes (only
-their lines are translated, not what they draw). The model is told to
+`translate` sends the model the `say` lines and every scene's text
+props, code scenes' included, in one request, and writes
+`script.es.json` beside the script with the translations in place and
+`language` set. The rest stays as it is: the structure, the brand,
+numbers, logos, images and the code scenes' modules. The model is told to
 keep screen texts short, keep the `*marks*`, and word a screen text the
 way the line says it, so steps and tiles still light up on the spoken
 word. Play it with `player({ script: 'script.es.json', voice:
@@ -593,11 +595,11 @@ others run in Chromium and ffmpeg against
 - captions: phrases cut at sentences, commas, pauses, and evenly when
   long, joined without spaces in Japanese; each up until the next; the
   `.srt` text. In the player, the phrase and the lit word at given
-  frames, a code scene given its words, `window.cuadro.captions`, and
+  frames, a code scene given its words and props, `window.cuadro.captions`, and
   the scenes kept above the band. Steps move to the item the narration
   names, not on even beats.
 - translate, against a fake model: only the text is sent and replaced,
-  the brand, logos and code scenes stay, `language` is set and
+  the brand, logos, images and code modules stay, a code scene's props are translated, `language` is set and
   `script.es.json` written; a reply of the wrong length fails. `make
   --language` sets it and asks for it. The checker fails letters the
   fonts lack unless a `font` is named.
@@ -680,9 +682,9 @@ the system. Inter and Space Grotesk (Latin-1, 70 KB of woff2) ship in
   file and an alignment of what it heard with the script's words. The
   loudness estimate needs neither. Captions positioned anywhere but the
   bottom, or styled other than by the theme.
-- In `translate`: what code scenes draw, and fitting the longer text of
-  some languages (a long Spanish headline can overflow a kinetic scene;
-  check the stills).
+- In `translate`: text a code scene writes in its module rather than
+  its props. Hyphenation: a word too long for its box at the smallest
+  size breaks wherever it must.
 - Waiting on anything except fonts and `<img>`: there is no "delay
   render" hook. CSS background images and fetched data must be ready
   before `composition` is called.

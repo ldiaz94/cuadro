@@ -6,7 +6,7 @@
       "say": "Meet Lumen: notes that find you when you need them." },
     { "type": "kinetic", "props": { "lines": ["You write it down.", "Then you *lose it.*"] },
       "say": "You write something down, and a week later it's gone." },
-    { "code": "scenes/wave.js", "say": "With Lumen, just say it out loud, and it's saved where you'll look for it." },
+    { "code": "scenes/wave.js", "props": { "kicker": "Speak", "title": "Say it, and it's", "mark": "saved" }, "say": "With Lumen, just say it out loud, and it's saved where you'll look for it." },
     { "type": "steps", "props": { "title": "How it works", "items": [
       { "title": "Write", "text": "Type, paste or speak." },
       { "title": "Link", "text": "Tied to people and projects." },

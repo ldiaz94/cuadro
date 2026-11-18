@@ -8,7 +8,8 @@
 // script's format (16:9 unless it says), or of the page's props' format,
 // so one script renders in any shape: --props '{"format":"9:16"}'.
 // A code scene module's default export gets { length, levels, words, say,
-// fps, format } and returns a view (see player.d.ts); kinetic, steps,
+// fps, format, props } (props: the scene's own, such as its text, from the
+// script) and returns a view (see player.d.ts); kinetic, steps,
 // tiles, app and compare get their line's words, to move as it names
 // their items. With `captions: true` the narration's words are shown
 // (captions.js), the scenes keep above them, and window.cuadro.captions
@@ -56,7 +57,7 @@ export async function player({ script = 'script.json', voice = 'voice/voice.json
     if (scene.code) {
       const make = modules[i].default;
       if (typeof make !== 'function') throw new Error(`cuadro: ${scene.code} must export default a function that returns a view`);
-      view = make({ length, levels: line?.levels ?? [], words, say: scene.say, fps, format });
+      view = make({ length, levels: line?.levels ?? [], words, say: scene.say, fps, format, props: scene.props ?? {} });
     } else {
       const props = { ...scene.props, length, words };
       if (scene.type === 'endCard') props.logo ??= source.brand?.logo;
