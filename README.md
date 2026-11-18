@@ -83,10 +83,12 @@ npx cuadro render video.html out.mp4 --props '{"color":"teal"}' --audio song.mp3
 | `composition({ width, height, fps, durationInFrames, view, props })` | Mounts `view(frame, props)` on a stage of that size. The defaults in `props` are merged with `?props=<json>` from the URL. Sets `window.cuadro`, and adds the preview bar unless the URL has `?render`. |
 | `sequence(from, duration, view)` | A view that mounts `view(local)` while `from <= frame < from + duration`, with `local = frame - from`. Outside that range it unmounts, and the view's effects are disposed. |
 | `series([duration, view], ...)` | Sequences played back to back. Use `Infinity` for a last clip that stays. |
+| `audio(src, { volume })` | A view that plays the sound file `src` from its first frame until it unmounts or the file ends. `volume` is a gain, 1 by default. Put it in a sequence to start it later. |
 | `interpolate(x, inRange, outRange, { easing, extrapolate })` | Piecewise mapping over two or more increasing stops. `extrapolate` is `'clamp'` (the default) or `'extend'`, or `{ left, right }` to set each side. |
 | `spring({ frame, fps, config, from, to })` | A damped spring, computed in closed form. `config` is `{ mass: 1, stiffness: 100, damping: 10 }` by default. It goes from `from` (0) to `to` (1). |
 | `linear`, `ease`, `easeIn`, `easeOut`, `easeInOut`, `bezier(x1, y1, x2, y2)` | CSS's easing curves. |
 | `window.cuadro.setFrame(n)` | Shows frame `n`. Resolves once fonts are loaded and every `<img>` is decoded, and rejects if an image fails. |
+| `window.cuadro.clips` | The audio clips mounted so far, as `{ src, from, until, volume }` in composition frames. |
 | `render({ page, out, props, audio, root, onProgress })` | From `cuadro/render`, the Node API that the CLI calls. Use it in jobs. |
 | spark's API | Re-exported, so a video needs only one import. |
 
@@ -107,7 +109,7 @@ which cuadro waits for.
 
 ## How it works
 
-Five ideas, a module each:
+Six ideas, a module each:
 
 1. **Time is a signal** ([`src/composition.js`](src/composition.js)). The
    composition owns `frame`, and everything drawn is computed from it.
@@ -129,14 +131,24 @@ Five ideas, a module each:
    and adds a bar with play/pause, a scrubber and the frame number. Play
    moves the frame by the wall clock. That is fine for watching, and it
    is never used when rendering.
-5. **Rendering is a loop** ([`src/render.js`](src/render.js), with
+5. **Sound is a record** ([`src/audio.js`](src/audio.js)). An `audio`
+   view draws nothing. When it mounts, it works out the composition frame
+   at which its own frame is 0, and adds `{ src, from, volume }` to
+   `window.cuadro.clips`. When its sequence ends, it adds `until`, the
+   frame it stopped at. A render visits every frame, so by the end the
+   list holds every clip that is heard.
+6. **Rendering is two passes** ([`src/render.js`](src/render.js), with
    [`src/serve.js`](src/serve.js) and [`src/chromium.js`](src/chromium.js)).
    cuadro serves the root directory on a loopback port, opens the page at
    the composition's size, and loops over the frames: `setFrame(n)`, take
    a PNG screenshot, write it to ffmpeg's stdin. Writes wait when the
    pipe is full, and a page error or a failed image stops the render
-   instead of hanging it. [`bin/cuadro.js`](bin/cuadro.js) parses the
-   command line and shows progress.
+   instead of hanging it. The frames go to a temporary video file. A
+   second ffmpeg run then mixes the clips, each delayed to its `from` and
+   cut at its `until`, with `--audio` as one more clip at frame 0, and
+   muxes the mix with the video copied as it is.
+   [`bin/cuadro.js`](bin/cuadro.js) parses the command line and shows
+   progress.
 
 ## Tests
 
@@ -158,6 +170,11 @@ others run in Chromium and ffmpeg against
   identical frame checksums twice, and other props give different ones;
   audio is padded to the video's length; a page error or a broken image
   fails the render.
+- audio, against [`test/audio.html`](test/audio.html): two clips are
+  heard from their frames until their sequence or file ends (measured by
+  detecting silence in the mix); a clip in a sequence never reached is
+  never heard; `--audio` plays together with the clips; the same input
+  gives the same decoded audio twice.
 
 `npm run types` type-checks the declarations against
 [`test/types.ts`](test/types.ts).
@@ -170,14 +187,15 @@ Lines of code, not counting comments or blank lines:
 |---|---|
 | `src/animate.js` | 61 |
 | `src/timeline.js` | 20 |
-| `src/composition.js` | 32 |
+| `src/composition.js` | 41 |
+| `src/audio.js` | 17 |
 | `src/preview.js` | 45 |
-| `src/render.js` | 60 |
+| `src/render.js` | 95 |
 | `src/serve.js` | 32 |
 | `src/chromium.js` | 19 |
-| `src/index.js` | 4 |
+| `src/index.js` | 5 |
 | `bin/cuadro.js` | 52 |
-| **total** | **325** |
+| **total** | **387** |
 
 The only dependencies are spark and playwright-core, plus ffmpeg from
 the system.
@@ -193,7 +211,6 @@ the system.
 - Waiting on anything except fonts and `<img>`: there is no "delay
   render" hook. CSS background images and fetched data must be ready
   before `composition` is called.
-- Audio in the preview, and audio mixing. A render takes one soundtrack.
 
 ## Licence
 

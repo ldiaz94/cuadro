@@ -36,6 +36,20 @@ export type View = (frame: Getter<number>) => Child;
 export function sequence(from: number, duration: number, view: View): View;
 /** Plays [duration, view] clips back to back. */
 export function series(...clips: [duration: number, view: View][]): View;
+/** A view that plays the sound file src from its first frame until it unmounts. */
+export function audio(src: string, options?: { volume?: number }): View;
+
+/** A sound recorded by audio() when it mounted, for the renderer to mix. */
+export interface Clip {
+  /** The file's URL, resolved against the page's. */
+  src: string;
+  /** The composition frame at which the clip starts. */
+  from: number;
+  /** The composition frame at which it was unmounted, if it was. */
+  until?: number;
+  /** A gain, 1 as recorded. */
+  volume: number;
+}
 
 /** What window.cuadro holds: the video's size, rate and length, and setFrame. */
 export interface Composition {
@@ -43,6 +57,8 @@ export interface Composition {
   height: number;
   fps: number;
   durationInFrames: number;
+  /** The audio clips mounted so far. */
+  clips: Clip[];
   /** Shows frame n; resolves once fonts and images are ready, rejects if an image fails. */
   setFrame(n: number): Promise<void>;
 }

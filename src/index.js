@@ -3,3 +3,4 @@ export * from 'spark';
 export { interpolate, spring, bezier, linear, ease, easeIn, easeOut, easeInOut } from './animate.js';
 export { sequence, series } from './timeline.js';
 export { composition } from './composition.js';
+export { audio } from './audio.js';

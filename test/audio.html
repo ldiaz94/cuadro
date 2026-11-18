@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<script type="importmap">{ "imports": { "spark": "/node_modules/spark/src/index.js", "cuadro": "/src/index.js" } }</script>
+<script type="module">
+  // 3 s at 10 fps: clip a from frame 5 to its end, clip b from frame 15
+  // cut at frame 20, and clip c in a sequence past the end, never heard.
+  // The tones' URLs come in props.
+  import { composition, sequence, audio, html } from 'cuadro';
+  composition({
+    width: 64, height: 48, fps: 10, durationInFrames: 30,
+    props: { a: '', b: '', c: '' },
+    view: (frame, props) => html`<div style="background:black;width:64px;height:48px">
+      ${sequence(5, 100, audio(props.a))(frame)}
+      ${sequence(15, 5, audio(props.b, { volume: 0.5 }))(frame)}
+      ${sequence(40, 5, audio(props.c))(frame)}
+    </div>`,
+  });
+</script>

@@ -8,7 +8,7 @@ export function render(options: {
   out: string;
   /** Merged over the composition's default props. */
   props?: object;
-  /** A soundtrack, cut or padded with silence to the video's length. */
+  /** A soundtrack played from frame 0 with the clips, cut or padded with silence to the video's length. */
   audio?: string;
   /** The directory served to the browser (default: the working directory). */
   root?: string;
