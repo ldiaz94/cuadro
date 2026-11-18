@@ -1,16 +1,22 @@
 #!/usr/bin/env node
-// cuadro's command line: `cuadro render <page> <out.mp4> [options]` and
-// `cuadro voice <script.json> --provider p [options]`.
-// Parses the arguments, calls render() or voice() and shows progress on
-// stderr: for render, one updating line on a terminal, about ten lines
-// otherwise (for job logs); for voice, one line per spoken line.
-// Depends on render.js and voice.js. Leaves out every other subcommand.
+// cuadro's command line: `cuadro render <page> <out.mp4> [options]`,
+// `cuadro voice <script.json> --provider p [options]` and
+// `cuadro make "<prompt>" --provider p [options]`.
+// Parses the arguments, calls render(), voice() or make() and shows
+// progress on stderr: for render, one updating line on a terminal, about
+// ten lines otherwise (for job logs); for voice, one line per spoken line;
+// for make, one line per step.
+// Depends on render.js, voice.js and make.js. Leaves out every other
+// subcommand.
+import { relative } from 'node:path';
 import { parseArgs } from 'node:util';
+import { make } from '../src/make.js';
 import { render } from '../src/render.js';
 import { voice } from '../src/voice.js';
 
 const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audio file] [--root dir]
        cuadro voice <script.json> --provider p [--voice v] [--model m] [--out dir] [--base-url url]
+       cuadro make "<prompt>" --provider p [--model m] [--out dir] [--rounds n] [--voice-provider p --voice v]
 
   --props json   props merged over the composition's defaults
   --audio file   soundtrack, cut or padded to the video's length
@@ -22,8 +28,15 @@ const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audi
   --out dir      where the audio files and voice.json go (default: voice)
   --base-url u   the provider's API address, to use another server
 
+  make writes <out>/video.js and index.html, checked in Chromium:
+  --provider p   anthropic, gemini or openai (or any compatible server)
+  --model m      the provider's model (default: the provider's own)
+  --out dir      the output folder, under the working directory (default: make-out)
+  --rounds n     revisions after the first draft, at most (default: 3)
+  --voice-provider p, --voice v   narrate it, with a voice provider above
+
   API keys come from ELEVENLABS_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY
-  (OPENAI_BASE_URL for other servers) and DASHSCOPE_API_KEY.`;
+  (OPENAI_BASE_URL for other servers), DASHSCOPE_API_KEY and ANTHROPIC_API_KEY.`;
 
 let args;
 try {
@@ -33,6 +46,7 @@ try {
       props: { type: 'string' }, audio: { type: 'string' }, root: { type: 'string', default: '.' },
       provider: { type: 'string' }, voice: { type: 'string' }, model: { type: 'string' },
       out: { type: 'string' }, 'base-url': { type: 'string' },
+      rounds: { type: 'string' }, 'voice-provider': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -42,7 +56,8 @@ try {
 const { values, positionals } = args;
 if (values.help) { console.log(usage); process.exit(0); }
 if (positionals[0] === 'voice') await runVoice();
-if (positionals[0] !== 'render' || positionals.length !== 3) fail('expected: render <page.html> <out.mp4> or voice <script.json>');
+if (positionals[0] === 'make') await runMake();
+if (positionals[0] !== 'render' || positionals.length !== 3) fail('expected: render <page.html> <out.mp4>, voice <script.json> or make "<prompt>"');
 let props;
 try {
   props = values.props && JSON.parse(values.props);
@@ -83,6 +98,26 @@ async function runVoice() {
       model: values.model, baseUrl: values['base-url'],
       onLine: ({ id, index, total, skipped }) => console.error(`line ${index + 1}/${total}  ${id}  ${skipped ? 'unchanged' : 'spoken'}`),
     });
+  } catch (e) {
+    console.error(e.message);
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
+/** Runs `cuadro make`, one progress line per step, says how to preview and render, and exits. */
+async function runMake() {
+  if (positionals.length !== 2) fail('expected: make "<prompt>"');
+  if (!values.provider) fail('make needs --provider');
+  const rounds = Number(values.rounds ?? 3);
+  if (!Number.isInteger(rounds) || rounds < 0) fail('--rounds must be a whole number');
+  try {
+    const { page } = await make({
+      prompt: positionals[1], provider: values.provider, model: values.model, out: values.out, rounds,
+      voiceProvider: values['voice-provider'], voice: values.voice, onStep: (m) => console.error(m),
+    });
+    console.error(`preview: serve this folder (npx serve . or python3 -m http.server) and open /${relative('.', page)}`);
+    console.error(`render:  npx cuadro render ${page} out.mp4`);
   } catch (e) {
     console.error(e.message);
     process.exit(1);
