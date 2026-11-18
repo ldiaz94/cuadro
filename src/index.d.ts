@@ -36,3 +36,24 @@ export type View = (frame: Getter<number>) => Child;
 export function sequence(from: number, duration: number, view: View): View;
 /** Plays [duration, view] clips back to back. */
 export function series(...clips: [duration: number, view: View][]): View;
+
+/** What window.cuadro holds: the video's size, rate and length, and setFrame. */
+export interface Composition {
+  width: number;
+  height: number;
+  fps: number;
+  durationInFrames: number;
+  /** Shows frame n; resolves once fonts and images are ready, rejects if an image fails. */
+  setFrame(n: number): Promise<void>;
+}
+/** Mounts view(frame, props) on a stage and makes the page renderable (and previewable). */
+export function composition<P extends object = Record<string, unknown>>(options: {
+  width: number;
+  height: number;
+  fps: number;
+  durationInFrames: number;
+  view: (frame: Getter<number>, props: P) => Child;
+  props?: P;
+}): Composition;
+
+export * from 'spark';

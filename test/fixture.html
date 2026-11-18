@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<script type="importmap">{ "imports": { "spark": "/node_modules/spark/src/index.js", "cuadro": "/src/index.js" } }</script>
+<script type="module">
+  // 12 frames of a bar growing across a coloured stage, over an image.
+  import { composition, interpolate, html } from 'cuadro';
+  composition({
+    width: 64, height: 48, fps: 12, durationInFrames: 12,
+    props: { color: 'navy', image: '/test/dot.svg', boom: false },
+    view: (frame, props) => {
+      if (props.boom) throw new Error('boom');
+      return html`<div style=${{ background: props.color, width: '64px', height: '48px' }}>
+        <img src=${props.image} width="16" height="16">
+        <div style=${() => ({ background: 'white', height: '8px', width: `${interpolate(frame(), [0, 11], [0, 64])}px` })}></div>
+      </div>`;
+    },
+  });
+</script>
