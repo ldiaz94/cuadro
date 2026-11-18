@@ -9,6 +9,9 @@
 //   stat     1-3 numbers in rows, each counting up in its beat as a rule sweeps under it
 //   steps    a list with a highlight moving down it, the current step large
 //   tiles    a grid with a highlight moving through it
+//   app      a phone or browser showing a screenshot or built rows, the camera easing in
+//   quote    a big quote word by word, then who said it, with an avatar or initials
+//   compare  two sides, the second revealed by a wipe, then picked as the better
 //   endCard  logo and a line, then a call to action and a URL, held to the end
 //
 //   0     Fade                                   length-Fade   length
@@ -22,8 +25,9 @@
 // properties in container units, so the scenes fill any frame size, and
 // a portrait frame stacks what sits side by side in landscape.
 // Depends on spark, animate.js, timeline.js and composition.js (for fps).
-// Leaves out transitions other than cross-fades, icons and images other
-// than the end card's logo, and props that no video has needed yet.
+// Leaves out transitions other than cross-fades, icons, images other than
+// the end card's logo, the app's screenshot and the quote's avatar, and
+// props that no video has needed yet.
 import { html } from 'spark';
 import { interpolate, spring, easeInOut } from './animate.js';
 import { sequence } from './timeline.js';
@@ -206,6 +210,82 @@ export function endCard({ length, logo, line, cta, url }) {
     ${url && html`<p class="cq-url" style=${() => rise(t.enter(second.from + 10))}>${url}</p>`}`, { className: 'cq-end', fadeOut: false });
 }
 
+/**
+ * A phone (or a browser window) showing a screenshot, `image`, panned from its top to its bottom
+ * over two beats, or 2-4 built `rows`, one arriving per beat; the camera eases in and turns toward
+ * the viewer for the whole scene. Beside it (above it in portrait) an optional headline.
+ */
+export function app({ length, title, device = 'phone', image, rows }) {
+  if (!image === !rows) throw new Error('app: give an image or rows, not both');
+  const windows = beats(length, rows ? rows.length : 2);
+  const end = length - Fade;
+  return scene(length, (t) => html`
+    ${title && html`<h2 class="cq-display cq-head">${words(title, t, 0, windows[0].to)}</h2>`}
+    <div class="cq-view">
+      <div class=${`cq-device cq-${device}`} style=${() => {
+        const p = t.between(0, end);
+        return { opacity: Math.min(1, t.enter(0)), '--turn': 1 - p, '--zoom': 0.86 + 0.08 * t.enter(0) + 0.06 * p, '--pan': 1 - 2 * p };
+      }}>
+        ${device === 'browser' && html`<div class="cq-bar"><i></i><i></i><i></i></div>`}
+        <div class="cq-screen">${image
+          ? html`<img src=${image} alt="" style=${() => ({ objectPosition: `50% ${100 * t.between(windows[0].from + 10, end)}%` })}>`
+          : rows.map((row, i) => html`<div class=${`cq-row cq-${row.kind ?? 'item'}`} style=${() => {
+            const p = t.enter(windows[i].from);
+            return { '--a': active(t, windows, i), opacity: Math.min(1, Math.max(0, p)), transform: `translateY(${2 * (1 - p)}cqh) scale(${0.9 + 0.1 * p})` };
+          }}>
+            ${['item', 'profile'].includes(row.kind ?? 'item') && html`<span class="cq-avatar">${initials(row.title)}</span>`}
+            <p><b>${row.title}</b>${row.text && html`<span>${row.text}</span>`}</p>
+          </div>`)}</div>
+      </div>
+    </div>`, { className: 'cq-app' });
+}
+
+/** A quote word by word, its *marked words* swept in the second beat, as who said it arrives under it: an avatar (an image URL) or their initials, ringed by a sweep to the end. */
+export function quote({ length, quote, name, role, image }) {
+  const [said, by] = beats(length, 2);
+  const count = quote.split(/\s+/).length;
+  const size = count <= 10 ? 'var(--t-1)' : count <= 20 ? 'var(--t-2)' : 'var(--t-3)';
+  return scene(length, (t) => html`
+    <i class="cq-display cq-glyph" style=${() => ({ opacity: Math.min(1, t.enter(said.from)), transform: `translateY(${-3 * t.between(0, length)}cqh) rotate(${-8 + 8 * t.enter(said.from)}deg)` })}>“</i>
+    <p class="cq-display cq-said" style=${{ fontSize: size }}>${words(quote, t, said.from + 4, by.from)}</p>
+    <div class="cq-by" style=${() => rise(t.enter(by.from))}>
+      <span class="cq-ring" style=${() => ({ '--p': t.between(by.from, length - Fade) })}>
+        ${image ? html`<img src=${image} alt="">` : html`<span class="cq-avatar">${initials(name)}</span>`}</span>
+      <p><b>${name}</b>${role && html`<span>${role}</span>`}</p>
+    </div>`, { className: 'cq-quote' });
+}
+
+/**
+ * Two sides, `{ label, items }`, side by side (stacked in portrait): the first with its items one by
+ * one, then the second revealed by a wipe with its own, then the second picked: it lifts as the
+ * first dims.
+ */
+export function compare({ length, title, left, right }) {
+  const [first, second, verdict] = beats(length, 3);
+  /** 0 to 1 as the second side is picked. */
+  const picked = (t) => t.between(verdict.from - 4, verdict.from + 10);
+  /** A side's card: its label, and its items spread across its beat. */
+  const side = (t, { label, items }, { from, to }, better) => html`<div class=${`cq-side${better ? ' cq-better' : ''}`} style=${() => (better
+    ? { '--r': t.between(from, from + 18), '--a': picked(t) }
+    : { opacity: Math.min(1, t.enter(from)) * (1 - 0.45 * picked(t)) })}>
+    <h3 class="cq-display">${label}</h3>
+    <ul>${items.map((item, k) => html`<li style=${() => rise(t.enter(from + 8 + Math.round((k * (to - from - 8)) / items.length)))}>
+      <i class="cq-tick"></i>${item}</li>`)}</ul>
+  </div>`;
+  return scene(length, (t) => html`
+    ${title && html`<h2 class="cq-display cq-head" style=${() => rise(t.enter(0))}>${title}</h2>`}
+    <div class="cq-sides">
+      ${side(t, left, first, false)}
+      <span class="cq-vs" style=${() => ({ transform: `scale(${t.enter(second.from - 6)}) rotate(${360 * picked(t)}deg)` })}>vs</span>
+      ${side(t, right, second, true)}
+    </div>`, { className: 'cq-compare' });
+}
+
+/** The first letters of a name's first two words, for an avatar without a picture. */
+function initials(name) {
+  return name.split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+}
+
 /** Style for something rising into place as p goes from 0 to 1 (and a little past). */
 function rise(p) {
   return { opacity: Math.min(1, Math.max(0, p)), transform: `translateY(${(1 - p) * 5}cqh)` };
@@ -320,6 +400,66 @@ const Css = `
   transform: translateX(calc((var(--s) * 2 - 1) * 100%)); }
 .cq-url { margin-top: 3.5cqh; color: var(--muted); font-weight: 600; }
 
+.cq-app { flex-direction: row; align-items: center; justify-content: center; gap: 6cqw; }
+.cq-app .cq-head { flex: 1 1 0; margin: 0; font-size: var(--t-1); }
+.cq-view { align-self: stretch; display: flex; justify-content: center; }
+.cq-device { display: flex; flex-direction: column; height: 100%; padding: 1.2cqmin; background: #101217;
+  box-shadow: 0 0 0 0.3cqmin var(--line), 0 4cqh 10cqh -3cqh #00000066;
+  transform: perspective(240cqmin) translateY(calc(var(--pan) * 2cqh)) rotateY(calc(var(--turn) * -14deg)) scale(var(--zoom)); }
+.cq-phone { width: 56cqmin; border-radius: 6cqmin; }
+.cq-browser { width: 62cqw; border-radius: 2cqmin; }
+.cq-bar { display: flex; gap: 1cqmin; padding: 0.4cqmin 0.8cqmin 1.6cqmin; }
+.cq-bar i { width: 1.6cqmin; height: 1.6cqmin; border-radius: 50%; background: #ffffff40; }
+.cq-screen { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 1.4cqmin;
+  padding: 5cqmin 2.4cqmin 2.4cqmin; border-radius: 4.8cqmin; background: color-mix(in srgb, var(--bg) 88%, var(--ink)); color: var(--ink); }
+.cq-phone .cq-screen::before { content: ''; position: absolute; top: 1.4cqmin; left: 50%; width: 14cqmin; height: 2.2cqmin; margin-left: -7cqmin;
+  border-radius: 99em; background: #101217; }
+.cq-browser .cq-screen { padding: 3cqmin; border-radius: 1cqmin; }
+.cq-screen:has(img) { padding: 0; }
+.cq-screen img { flex: 1; min-height: 0; width: 100%; object-fit: cover; border-radius: inherit; }
+.cq-row { display: flex; align-items: center; gap: 1.8cqmin; padding: 1.6cqmin 2cqmin; border-radius: 2cqmin; background: var(--surface);
+  font-size: var(--t-small); line-height: 1.2; box-shadow: 0 0 0 calc(var(--a) * 0.5cqmin) var(--accent); }
+.cq-row p { display: flex; flex-direction: column; min-width: 0; }
+.cq-row b { font-weight: 650; }
+.cq-row p span { color: var(--muted); }
+.cq-avatar { flex: none; display: grid; place-items: center; width: 2em; height: 2em; border-radius: 50%; background: var(--accent);
+  color: var(--on-accent); font-weight: 700; letter-spacing: 0.02em; }
+.cq-sent, .cq-received { max-width: 85%; border-radius: 3cqmin; }
+.cq-sent { align-self: flex-end; border-bottom-right-radius: 0.6cqmin; background: var(--accent); color: var(--on-accent); }
+.cq-sent p span { color: inherit; opacity: 0.75; }
+.cq-received { align-self: flex-start; border-bottom-left-radius: 0.6cqmin; }
+.cq-profile { flex-direction: column; gap: 1cqmin; text-align: center; }
+.cq-profile p { align-items: center; }
+.cq-profile b { font-size: var(--t-body); }
+
+.cq-quote { justify-content: space-between; }
+.cq-glyph { display: block; height: 0.42em; font-size: calc(var(--t-mega) * 1.1); font-style: normal; line-height: 0.8; color: var(--accent); }
+.cq-said { margin-block: auto; max-width: 20em; line-height: 1.12; text-wrap: balance; }
+.cq-by { display: flex; align-items: center; gap: 2.8cqmin; }
+.cq-ring { flex: none; width: 15cqmin; height: 15cqmin; padding: 0.7cqmin; border-radius: 50%;
+  background: conic-gradient(var(--accent2) calc(var(--p) * 360deg), var(--line) 0); }
+.cq-ring > * { width: 100%; height: 100%; border: 0.6cqmin solid var(--bg); object-fit: cover; font-size: var(--t-3); }
+.cq-by p { display: flex; flex-direction: column; font-size: var(--t-3); line-height: 1.2; }
+.cq-by b { font-weight: 700; }
+.cq-by p span { font-size: var(--t-body); color: var(--muted); }
+
+.cq-sides { display: grid; grid-template-columns: 1fr auto 1fr; gap: 3cqmin; flex: 1 1 0; min-height: 0; }
+.cq-side { display: flex; flex-direction: column; justify-content: center; gap: 4cqh; padding: 5cqmin; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--surface); }
+.cq-side h3 { font-size: var(--t-2); }
+.cq-side ul { display: flex; flex-direction: column; gap: 2.4cqh; margin: 0; padding: 0; list-style: none; }
+.cq-side li { display: flex; align-items: center; gap: 2cqmin; font-size: var(--t-3); font-weight: 550; line-height: 1.15; }
+.cq-tick { position: relative; flex: none; width: 1em; height: 1em; border-radius: 50%; background: var(--line); }
+.cq-tick::before { content: ''; position: absolute; left: 28%; right: 28%; top: 47%; height: 0.1em; background: currentColor; }
+.cq-better { border-color: transparent; background: var(--accent); color: var(--on-accent);
+  clip-path: inset(0 calc((1 - var(--r)) * 100%) 0 0 round var(--radius));
+  transform: translateY(calc(var(--a) * -1.5cqh)) scale(calc(1 + 0.03 * var(--a))); }
+.cq-better .cq-tick { background: var(--on-accent); }
+.cq-better .cq-tick::before { left: 36%; right: auto; top: 20%; width: 0.28em; height: 0.48em; background: none;
+  border: solid var(--accent); border-width: 0 0.1em 0.1em 0; transform: rotate(45deg); }
+.cq-vs { align-self: center; display: grid; place-items: center; width: 2.6em; height: 2.6em; border-radius: 50%; background: var(--ink);
+  color: var(--bg); font-size: var(--t-small); font-weight: 750; text-transform: uppercase; }
+
 @container (orientation: portrait) {
   .cq-figures { grid-template-columns: 1fr; }
   .cq-figure p { margin-top: 1cqh; }
@@ -327,5 +467,15 @@ const Css = `
   .cq-line { font-size: var(--t-hero); }
   .cq-steps-body { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; gap: 3cqh; }
   .cq-grid { grid-template-columns: repeat(min(var(--cols), 2), 1fr); }
+  .cq-app { flex-direction: column; align-items: stretch; gap: 4cqh; }
+  .cq-app .cq-head { flex: none; font-size: var(--t-2); }
+  .cq-view { flex: 1 1 0; min-height: 0; }
+  .cq-device { transform: perspective(240cqmin) translateY(calc(var(--pan) * 2cqh)) rotateX(calc(var(--turn) * 12deg)) scale(var(--zoom)); }
+  .cq-phone { width: 76cqw; }
+  .cq-browser { width: 100%; }
+  .cq-row { font-size: var(--t-body); }
+  .cq-sides { grid-template-columns: none; grid-template-rows: 1fr auto 1fr; }
+  .cq-vs { justify-self: center; }
+  .cq-better { clip-path: inset(0 0 calc((1 - var(--r)) * 100%) 0 round var(--radius)); }
 }
 `;

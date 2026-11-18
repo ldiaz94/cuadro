@@ -1,7 +1,7 @@
 // cuadro script: a video written as data, a list of scenes with their
 // narration, and what cuadro needs to know about it before playing it.
 //
-//   { "theme": "light", "brand": { "accent", "accent2", "logo" },
+//   { "format": "16:9", "theme": "light", "brand": { "accent", "accent2", "logo" },
 //     "music": "music.wav",
 //     "scenes": [ { "type": "stat", "props": { ... }, "say": "..." },
 //                 { "code": "scenes/twin.js", "say": "..." } ] }
@@ -16,7 +16,7 @@
 // without narration, and never less than its beats need.
 // Depends on scenes.js for its timing constants and theme.js for the theme
 // names, and on nothing that needs a page, so Node and the browser both
-// use it. Leaves out JSON Schema itself, defaults beyond the theme, and
+// use it. Leaves out JSON Schema itself, defaults beyond the theme and format, and
 // checking what a code scene draws.
 import { Fade, MinBeat } from './scenes.js';
 import { themes } from './theme.js';
@@ -37,10 +37,15 @@ const array = (items, min, max = Infinity) => ({ type: 'array', items, min, max 
 
 /** An item of a list or grid. */
 const Item = object({ title: Text, text: optional(Text) });
+/** A row of an app's screen. */
+const Row = object({ kind: optional({ type: 'string', oneOf: ['item', 'sent', 'received', 'profile'] }), title: Text, text: optional(Text) });
+/** A side of a comparison. */
+const Side = object({ label: Text, items: array(Text, 1, 4) });
 
 /**
  * The designed scenes (scenes.js) a script may use: their props without `length`, how many beats
- * the props make (each needs MinBeat frames), and their length in seconds without narration.
+ * the props make (each needs MinBeat frames), their length in seconds without narration, and, for
+ * some, a rule across props that returns what is wrong.
  */
 export const types = {
   title: { props: object({ kicker: optional(Text), title: Text, sub: optional(Text) }), beats: () => 3, seconds: 4 },
@@ -51,16 +56,29 @@ export const types = {
   },
   steps: { props: object({ title: optional(Text), items: array(Item, 2, 5) }), beats: (p) => p.items.length, seconds: 6 },
   tiles: { props: object({ title: optional(Text), items: array(Item, 2, 6) }), beats: (p) => p.items.length, seconds: 5.5 },
+  app: {
+    props: object({ title: optional(Text), device: optional({ type: 'string', oneOf: ['phone', 'browser'] }), image: optional(Text), rows: optional(array(Row, 2, 4)) }),
+    beats: (p) => p.rows?.length ?? 2, seconds: 5.5, rule: (p) => !p.image === !p.rows && 'give image or rows, not both',
+  },
+  quote: { props: object({ quote: Text, name: Text, role: optional(Text), image: optional(Text) }), beats: () => 2, seconds: 5 },
+  compare: { props: object({ title: optional(Text), left: Side, right: Side }), beats: () => 3, seconds: 6 },
   endCard: { props: object({ logo: optional(Text), line: Text, cta: optional(Text), url: optional(Text) }), beats: () => 2, seconds: 4 },
 };
 
 /** The themes a script may name; theme.js defines them. */
 export const ThemeNames = Object.keys(themes);
 
+/**
+ * The frame shapes a script may ask for, and their sizes: 720 pixels on the short side, so a portrait
+ * video has the landscape one's text sizes and its render time.
+ */
+export const formats = { '16:9': { width: 1280, height: 720 }, '9:16': { width: 720, height: 1280 } };
+
 /** A code scene's length in seconds without narration. */
 const CodeSeconds = 6;
 
 const Script = object({
+  format: optional({ type: 'string', oneOf: Object.keys(formats) }),
   theme: optional({ type: 'string', oneOf: ThemeNames }),
   brand: optional(object({ accent: optional(Colour), accent2: optional(Colour), logo: optional(Text) })),
   music: optional(Text),
@@ -80,6 +98,8 @@ export function check(script) {
     if ('code' in scene) return match(scene, Code, at);
     match(scene, Designed, at);
     match(scene.props, types[scene.type].props, `${at}.props`);
+    const wrong = types[scene.type].rule?.(scene.props);
+    if (wrong) throw new Error(`${at}.props: ${wrong}`);
   });
   return script;
 }

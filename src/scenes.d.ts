@@ -33,6 +33,18 @@ export interface Item {
   text?: string;
 }
 
+/** A row of an app's screen: a list item or a profile card (each with initials), or a chat bubble sent or received; text goes under title. */
+export interface Row {
+  kind?: 'item' | 'sent' | 'received' | 'profile';
+  title: string;
+  text?: string;
+}
+/** A side of a comparison: a label and 1 to 4 short items. */
+export interface Side {
+  label: string;
+  items: string[];
+}
+
 /** A kicker, a headline word by word, a mark swept under *words*, and a sub line. */
 export function title(props: { length: number; kicker?: string; title: Marked; sub?: string }): View;
 /** Two to four short lines, one per beat, each below the last, which dims. */
@@ -49,3 +61,9 @@ export function steps(props: { length: number; title?: string; items: Item[] }):
 export function tiles(props: { length: number; title?: string; items: Item[] }): View;
 /** A logo (image URL) and a line, then a call to action and a URL; held to the end, with no fade-out. */
 export function endCard(props: { length: number; logo?: string; line: Marked; cta?: string; url?: string }): View;
+/** A phone or browser showing an image (a screenshot path, panned top to bottom) or 2 to 4 built rows, one per beat, as the camera eases in; an optional headline beside it. */
+export function app(props: { length: number; title?: Marked; device?: 'phone' | 'browser'; image?: string; rows?: Row[] }): View;
+/** A big quote word by word, then who said it: name, role, and an avatar (an image path) or their initials. */
+export function quote(props: { length: number; quote: Marked; name: string; role?: string; image?: string }): View;
+/** Two sides, e.g. before and after: the first with its items, then the second revealed by a wipe, then picked as the better. */
+export function compare(props: { length: number; title?: string; left: Side; right: Side }): View;

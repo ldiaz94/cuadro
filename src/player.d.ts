@@ -1,8 +1,12 @@
 // Types for cuadro/player, written by hand beside src/player.js.
 import type { Composition, View } from './index.js';
+import type { Format } from './script.js';
 
-/** Plays a scene script: fetches script.json and voice.json (null for no narration), and makes the composition. */
-export function player(options?: { script?: string; voice?: string | null; width?: number; height?: number }): Promise<Composition>;
+/**
+ * Plays a scene script: fetches script.json and voice.json (null for no narration), and makes the
+ * composition, sized by the script's format or by `format` in the page's ?props.
+ */
+export function player(options?: { script?: string; voice?: string | null }): Promise<Composition>;
 /** The gain of a script's music under the narration. */
 export const MusicVolume: number;
 
@@ -41,4 +45,6 @@ export interface CodeScene {
   say?: string;
   /** Frames per second. */
   fps: number;
+  /** The frame's shape; a portrait (9:16) frame is narrower, so stack what sits side by side. */
+  format: Format;
 }
