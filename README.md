@@ -488,16 +488,16 @@ Lines of code, not counting blank lines or comments:
 | `src/speech.js` | 84 |
 | `src/voice.js` | 75 |
 | `src/llm.js` | 88 |
-| `src/make.js` | 272 |
+| `src/make.js` | 282 |
 | `src/theme.js` | 55 |
 | `src/scenes.js` | 249 |
 | `src/script.js` | 88 |
 | `src/player.js` | 41 |
 | `src/index.js` | 5 |
 | `bin/cuadro.js` | 120 |
-| **total** | **1477** |
+| **total** | **1487** |
 
-`scenes.js` counts its stylesheet, about 85 lines of CSS. `make.js` counts its prompt, about 90 lines of text.
+`scenes.js` counts its stylesheet, about 85 lines of CSS. `make.js` counts its prompt, about 100 lines of text.
 
 The only dependencies are spark and playwright-core, plus ffmpeg from
 the system. Inter and Space Grotesk (Latin, 70 KB of woff2) ship in
