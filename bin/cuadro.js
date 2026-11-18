@@ -36,15 +36,17 @@ const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audi
   --out dir      where the audio files and voice.json go (default: voice)
   --base-url u   the provider's API address, to use another server
   --fps n        frames per second of the loudness levels in voice.json (default: 30)
+  The script is { "lines": [{ "id", "text" }] }, or a scene script whose say lines it speaks.
 
-  make writes <out>/video.js and index.html, checked in Chromium:
+  make writes a scene script, <out>/script.json, with its code scenes and an index.html
+  that plays it, checked in Chromium:
   --provider p   anthropic, gemini or openai (or any compatible server)
   --model m      the provider's model (default: the provider's own)
   --out dir      the output folder, under the working directory (default: make-out)
   --rounds n     revisions after the first draft, at most (default: 3)
   --base-url u   the provider's API address, to use another server
   --voice-provider p, --voice v   narrate it, with a voice provider above
-  It exits 3 when the file passed the check but the model did not approve it.
+  It exits 3 when the script passed the check but the model did not approve it.
 
   API keys come from ELEVENLABS_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY,
   DASHSCOPE_API_KEY and ANTHROPIC_API_KEY. OPENAI_BASE_URL points openai at

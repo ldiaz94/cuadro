@@ -111,17 +111,27 @@ test('openai: system message, data URL image, refusal', async () => {
   await assert.rejects(run(reply({ content: 'ha' }, 'length'), { provider: 'openai' }), /cut off/);
 });
 
-/** A video.js that throws as it loads. */
-const broken = "import { composition } from 'cuadro';\nthrow new Error('boom at load');\n";
+/** A script with one code scene between two designed ones. */
+const script = JSON.stringify({ theme: 'bold', scenes: [
+  { type: 'title', props: { title: 'A *box*' }, say: 'A box.' },
+  { code: 'scenes/box.js', say: 'It moves.' },
+  { type: 'endCard', props: { line: 'Bye' }, say: 'Bye.' }] }, null, 2);
 
-/** A small video.js whose box moves across the frame. */
-const working = `import { composition, html } from 'cuadro';
-composition({
-  width: 64, height: 36, fps: 10, durationInFrames: 20,
-  view: (frame) => html\`<div style="position:absolute;inset:0;background:#000">
-    <b style=\${() => ({ position: 'absolute', top: '10px', width: '8px', height: '8px', background: '#fff', left: frame() * 2 + 'px' })}></b></div>\`,
-});
+/** The code scene: a box moving across the frame. */
+const box = `import { html } from 'cuadro';
+import { scene } from 'cuadro/scenes';
+export default ({ length }) => scene(length, (t) => html\`<b style=\${() => ({ position: 'absolute', left: t.frame() + 'px', width: '40px', height: '40px', background: 'var(--accent)' })}></b>\`);
 `;
+
+/** A code scene that throws as it loads. */
+const broken = "throw new Error('boom at load');\n";
+
+/** A reply holding script.json and the given code scenes, by path. */
+const reply = (json, modules = {}) => said('Here:\n```json\n' + json + '\n```\n'
+  + Object.entries(modules).map(([path, source]) => '```js ' + path + '\n' + source + '```\n').join(''));
+
+/** The text of the last user message of request i to the fake server s. */
+const lastText = (s, i) => JSON.parse(s.requests[i].body).messages.at(-1).content.at(-1).text;
 
 /** A temporary output folder under the repo (served as the root), removed afterwards. */
 async function folder(t) {
@@ -130,90 +140,86 @@ async function folder(t) {
   return out;
 }
 
-test('make: a broken file, then a working one, then OK', async (t) => {
+test('make: a schema error, a broken code scene, then a working script, then OK', async (t) => {
   process.env.ANTHROPIC_API_KEY = 'ka';
   const out = await folder(t);
-  const s = await fakeServer([said('```js\n' + broken + '```'), said('Fixed:\n```js\n' + working + '```'), said('Looks good, OK')]);
+  const bad = JSON.stringify({ scenes: [{ type: 'tiles', props: { items: 'a, b' } }] });
+  const s = await fakeServer([reply(bad), reply(script, { 'scenes/box.js': broken }), reply(script, { 'scenes/box.js': box }), said('Looks good, OK')]);
   t.after(() => s.close());
   const steps = [];
   const result = await make({ prompt: 'a moving box', provider: 'anthropic', baseUrl: s.url, out, onStep: (m) => steps.push(m) });
 
-  assert.equal(s.requests.length, 3);
-  const bodies = s.requests.map((r) => JSON.parse(r.body));
-  assert.match(bodies[0].system, /export function composition/);
-  assert.match(bodies[0].system, /## Learn it/);
-  const second = bodies[1].messages.at(-1).content.at(-1).text;
-  assert.match(second, /boom at load/);
-  const third = bodies[2].messages.at(-1).content;
-  assert.equal(third.filter((c) => c.type === 'image').length, 5);
-  assert.equal(bodies[2].messages.length, 5);
-  assert.equal(await readFile(result.file, 'utf8'), working);
-  assert.match(await readFile(join(out, 'index.html'), 'utf8'), /"cuadro":"\/src\/index.js"/);
+  assert.equal(s.requests.length, 4);
+  const { system } = JSON.parse(s.requests[0].body);
+  assert.match(system, /"tiles": \{ title\?: string; items: Item\[\] \}/);
+  assert.match(system, /items: 2 to 6 items/);
+  assert.match(system, /- dark: background #0c0e14/);
+  assert.match(system, /What a code scene gets/);
+  assert.match(lastText(s, 1), /scenes\[0\].props.items: expected an array/);
+  assert.match(lastText(s, 2), /boom at load/);
+  const images = JSON.parse(s.requests[3].body).messages.at(-1).content.filter((c) => c.type === 'image');
+  assert.equal(images.length, 5, 'one still per designed scene, three for the code scene');
+  assert.equal(await readFile(result.file, 'utf8'), script + '\n');
+  assert.equal(await readFile(join(out, 'scenes', 'box.js'), 'utf8'), box);
+  const index = await readFile(result.page, 'utf8');
+  assert.match(index, /"cuadro\/player":"\/src\/player.js"/);
+  assert.match(index, /player\(\{ voice: null \}\)/);
   assert.deepEqual(steps, [
-    'round 1: asking anthropic…', 'round 1: page error: boom at load',
-    'round 2: asking anthropic…', 'round 2: ok, reviewing',
-    'round 3: asking anthropic…', `done: ${result.file}`,
+    'round 1: asking anthropic…', 'round 1: script.json: scenes[0].props.items: expected an array',
+    'round 2: asking anthropic…', 'round 2: page error: boom at load',
+    'round 3: asking anthropic…', 'round 3: ok, reviewing',
+    'round 4: asking anthropic…', `done: ${result.file}`,
   ]);
   assert.equal(result.reviewed, true);
 });
 
-test('make: a reply without a js block is a clear error', async (t) => {
+test('make: a code scene missing from the reply goes back; one named on its first line is found', async (t) => {
+  process.env.ANTHROPIC_API_KEY = 'ka';
+  const out = await folder(t);
+  const named = said('```json\n' + script + '\n```\n```js\n// scenes/box.js\n' + box + '```');
+  const s = await fakeServer([reply(script), named, said('OK')]);
+  t.after(() => s.close());
+  const result = await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out });
+  assert.match(lastText(s, 1), /scenes\[1\].code: the reply has no ```js scenes\/box.js block/);
+  assert.equal(result.reviewed, true);
+});
+
+test('make: a reply without a json block is a clear error', async (t) => {
   process.env.ANTHROPIC_API_KEY = 'ka';
   const out = await folder(t);
   const s = await fakeServer([said('Sure, here is my plan.')]);
   t.after(() => s.close());
-  await assert.rejects(make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out }), /without a ```js block/);
+  await assert.rejects(make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out }), /without a ```json block/);
 });
 
 test('make: out must be a folder inside root, not root itself', async () => {
   for (const out of ['.', '..', '/tmp']) await assert.rejects(make({ prompt: 'x', provider: 'anthropic', out }), /must be a folder inside/);
 });
 
-test('make: after a file passed, a failed fix and then an API error leave the passed file', async (t) => {
+test('make: after a script passed, a failed fix and then an API error leave the passed files', async (t) => {
   process.env.ANTHROPIC_API_KEY = 'ka';
   const out = await folder(t);
-  const s = await fakeServer([said('```js\n' + working + '```'), said('```js\n' + broken + '```'), { status: 400, body: 'bad request' }]);
+  const worse = script.replace('A *box*', 'A worse box');
+  const s = await fakeServer([reply(script, { 'scenes/box.js': box }), reply(worse, { 'scenes/box.js': broken }), { status: 400, body: 'bad request' }]);
   t.after(() => s.close());
   const steps = [];
   const result = await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out, onStep: (m) => steps.push(m) });
-  assert.equal(await readFile(result.file, 'utf8'), working);
+  assert.equal(await readFile(result.file, 'utf8'), script + '\n');
+  assert.equal(await readFile(join(out, 'scenes', 'box.js'), 'utf8'), box);
   assert.match(steps.at(-2), /^stopped: anthropic: HTTP 400/);
   assert.equal(result.reviewed, false);
 });
 
-test('make: a review that fails twice keeps the passed file, unreviewed', async (t) => {
+test('make: a review that fails twice keeps the passed script, unreviewed', async (t) => {
   process.env.ANTHROPIC_API_KEY = 'ka';
   const out = await folder(t);
-  const s = await fakeServer([said('```js\n' + working + '```'), said('', { stop_reason: 'max_tokens' }), said('', { stop_reason: 'max_tokens' })]);
+  const s = await fakeServer([reply(script, { 'scenes/box.js': box }), said('', { stop_reason: 'max_tokens' }), said('', { stop_reason: 'max_tokens' })]);
   t.after(() => s.close());
   const steps = [];
   const result = await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out, onStep: (m) => steps.push(m) });
   assert.equal(s.requests.length, 3);
   assert.equal(result.reviewed, false);
-  assert.equal(await readFile(result.file, 'utf8'), working);
   assert.match(steps.at(-1), /^not reviewed: .* passed the check/);
-});
-
-test('make: a review that fails once and then says OK is reviewed', async (t) => {
-  process.env.ANTHROPIC_API_KEY = 'ka';
-  const out = await folder(t);
-  const s = await fakeServer([said('```js\n' + working + '```'), said('', { stop_reason: 'max_tokens' }), said('OK')]);
-  t.after(() => s.close());
-  const steps = [];
-  const result = await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out, onStep: (m) => steps.push(m) });
-  assert.equal(result.reviewed, true);
-  assert.match(steps.join('\n'), /round 2: anthropic: the reply was cut off at the token limit; asking again/);
-});
-
-test('make: a still video passes, with a note for the review', async (t) => {
-  process.env.ANTHROPIC_API_KEY = 'ka';
-  const out = await folder(t);
-  const still = working.replace("frame() * 2 + 'px'", "'4px'");
-  const s = await fakeServer([said('```js\n' + still + '```'), said('OK')]);
-  t.after(() => s.close());
-  await make({ prompt: 'a title card', provider: 'anthropic', baseUrl: s.url, out });
-  assert.match(JSON.parse(s.requests[1].body).messages.at(-1).content.at(-1).text, /Note: frames 0, 5, 10, 14, 19 are all identical/);
-  assert.equal(await readFile(join(out, 'video.js'), 'utf8'), still);
 });
 
 test('make: the page may read only its folder and the libraries, and nothing from the network', async (t) => {
@@ -223,42 +229,37 @@ test('make: the page may read only its folder and the libraries, and nothing fro
 const found = [await status('/package.json'), await status('https://example.com/'), await status('./index.html')];
 throw new Error('fetched ' + found.join(' '));
 `;
-  const s = await fakeServer([said('```js\n' + prying + '```'), said('```js\n' + working + '```'), said('OK')]);
+  const s = await fakeServer([reply(script, { 'scenes/box.js': prying }), reply(script, { 'scenes/box.js': box }), said('OK')]);
   t.after(() => s.close());
   await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out });
-  const problem = JSON.parse(s.requests[1].body).messages.at(-1).content.at(-1).text;
-  assert.match(problem, /fetched 404 blocked 200/);
+  assert.match(lastText(s, 1), /fetched 404 blocked 200/);
 });
 
 test('make: a frame that never finishes is a problem sent back, not a hang', async (t) => {
   process.env.ANTHROPIC_API_KEY = 'ka';
   const out = await folder(t);
-  const stuck = working.replace("left: frame() * 2 + 'px'", "left: (frame() > 0 ? stall() : 0) + 'px'") + 'function stall() { for (;;); }\n';
-  const s = await fakeServer([said('```js\n' + stuck + '```'), said('```js\n' + working + '```'), said('OK')]);
+  const stuck = box.replace("left: t.frame() + 'px'", "left: (t.frame() > 0 ? stall() : 0) + 'px'") + 'function stall() { for (;;); }\n';
+  const s = await fakeServer([reply(script, { 'scenes/box.js': stuck }), reply(script, { 'scenes/box.js': box }), said('OK')]);
   t.after(() => s.close());
   await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out, timeout: 1000 });
-  const problem = JSON.parse(s.requests[1].body).messages.at(-1).content.at(-1).text;
-  assert.match(problem, /setFrame\(5\) took longer than 1 s/);
-  assert.equal(await readFile(join(out, 'video.js'), 'utf8'), working);
+  assert.match(lastText(s, 1), /setFrame\(\d+\) took longer than 1 s/);
+  assert.equal(await readFile(join(out, 'scenes', 'box.js'), 'utf8'), box);
 });
 
-test('make: narration speaks the script and hands voice.json to the model', async (t) => {
+test('make: narration speaks the say lines, and the stills follow their lengths', async (t) => {
   process.env.ANTHROPIC_API_KEY = 'ka';
   const out = await folder(t);
-  const speech = await fakeServer([{ body: wav(Buffer.alloc(8000), 8000) }]);
+  const speech = await fakeServer([{ body: wav(Buffer.alloc(8000 * 3), 8000) }]); // 1.5 s a line
   t.after(() => speech.close());
   process.env.OPENAI_BASE_URL = speech.url;
-  const narrated = working.replace("import { composition, html } from 'cuadro';",
-    "import { composition, audio, html } from 'cuadro';\nimport voice from './voice/voice.json' with { type: 'json' };\nvoid audio('voice/' + voice.lines[0].file);");
-  const script = '```json\n{ "lines": [{ "id": "intro", "text": "Hello" }] }\n```';
-  const s = await fakeServer([said(script), said('```js\n' + narrated + '```'), said('OK')]);
+  const s = await fakeServer([reply(script, { 'scenes/box.js': box }), said('OK')]);
   t.after(() => s.close());
   await make({ prompt: 'a box, narrated', provider: 'anthropic', baseUrl: s.url, out, voiceProvider: 'openai' });
 
-  assert.equal(speech.requests.length, 1);
-  assert.deepEqual(JSON.parse(await readFile(join(out, 'script.json'), 'utf8')).lines, [{ id: 'intro', text: 'Hello' }]);
-  const request = JSON.parse(s.requests[1].body).messages.at(-1).content.at(-1).text;
-  assert.match(request, /"id": "intro"/);
-  assert.match(request, /"seconds": 0\.5/);
-  assert.equal(await readFile(join(out, 'video.js'), 'utf8'), narrated);
+  assert.deepEqual(speech.requests.map((r) => JSON.parse(r.body).input), ['A box.', 'It moves.', 'Bye.']);
+  const { lines } = JSON.parse(await readFile(join(out, 'voice', 'voice.json'), 'utf8'));
+  assert.deepEqual(lines.map((l) => l.id), ['scene1', 'scene2', 'scene3']);
+  // 45 frames a line: lengths 65, 65 and 90; stills 3/4 into the designed scenes, three in the code scene
+  assert.match(lastText(s, 1), /at frames 49, 69, 89, 108, 174:/);
+  assert.match(await readFile(join(out, 'index.html'), 'utf8'), /await player\(\);/);
 });

@@ -34,3 +34,12 @@ const clips: [number, View][] = [
   [60, scene(60, (t) => html`<b style=${() => ({ opacity: t.enter(beats(60, 2)[1].from) * t.between(0, Fade) })}>${t.frame}</b>`)],
 ];
 composition({ width: 1280, height: 720, fps: 30, durationInFrames: playLength(...clips), view: (frame) => stage(look, play(...clips))(frame) });
+
+import { level } from 'cuadro/level';
+import { check, lines, timing } from 'cuadro/script';
+import { player, type CodeScene } from 'cuadro/player';
+const script = check({ scenes: [{ type: 'title', props: { title: 'Hi' }, say: 'Hi.' }, { code: 'scenes/x.js' }] });
+const spoken: string = lines(script).lines[0].text;
+const first: number = timing(script, { fps: 30, lines: [{ id: 'scene1', file: 'a.wav', seconds: 1 }] })[0].length;
+const twin = ({ length, levels }: CodeScene): View => scene(length, (t) => html`<i style=${() => ({ opacity: level(levels, t.frame()) })}></i>`);
+void player({ voice: null }).then((c) => c.durationInFrames + first + spoken.length + twin.length);

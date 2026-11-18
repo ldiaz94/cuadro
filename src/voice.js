@@ -1,6 +1,8 @@
 // cuadro voice: turns a script of lines into one audio file per line, and a
 // voice.json listing them with their lengths and loudness.
-// The script is { "lines": [{ "id", "text" }] }. Line <id> becomes
+// The script is { "lines": [{ "id", "text" }] }, or a scene script
+// (script.js), whose `say` lines are spoken with ids scene1, scene2...
+// Line <id> becomes
 // <out>/<id>.<ext>, and <out>/voice.json is { fps, lines: [{ id, file,
 // seconds, hash, levels }] }, where hash covers the provider, its API
 // address, the voice, the model and the text. levels is the line's loudness,
@@ -9,7 +11,7 @@
 // the narration (see level.js). A line whose hash and file are unchanged is
 // not spoken again, so editing one line costs one request; it only gets its
 // levels redone if they are missing or were made for another fps.
-// Depends on speech.js, and ffprobe and ffmpeg on the PATH. Leaves out
+// Depends on speech.js, script.js, and ffprobe and ffmpeg on the PATH. Leaves out
 // deleting the files of lines removed from the script.
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -17,11 +19,13 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { check, lines as sceneLines } from './script.js';
 import { address, defaults, speak } from './speech.js';
 
 /** Speaks every line of the script into out, with levels at fps; onLine({ id, index, total, skipped }) after each. */
 export async function voice({ script, out = 'voice', provider, voice: voiceName, model, baseUrl, fps = 30, onLine = () => {} }) {
-  const { lines } = checked(JSON.parse(await readFile(script, 'utf8')));
+  const source = JSON.parse(await readFile(script, 'utf8'));
+  const { lines } = checked(source?.scenes ? sceneLines(check(source)) : source);
   const chosen = { voice: voiceName ?? defaults[provider]?.voice, model: model ?? defaults[provider]?.model };
   await mkdir(out, { recursive: true });
   const { fps: oldFps, lines: oldLines } = await readManifest(out);
@@ -50,7 +54,7 @@ export async function voice({ script, out = 'voice', provider, voice: voiceName,
 
 /** The script's lines, or an error if the script is malformed. */
 function checked(script) {
-  if (!Array.isArray(script?.lines)) throw new Error('cuadro: the script must be { "lines": [{ "id", "text" }] }');
+  if (!Array.isArray(script?.lines)) throw new Error('cuadro: the script must be { "lines": [{ "id", "text" }] } or a scene script { "scenes": [...] }');
   const seen = new Set();
   for (const { id, text } of script.lines) {
     if (typeof id !== 'string' || !/^[A-Za-z0-9_-]+$/.test(id)) throw new Error(`cuadro: line id ${JSON.stringify(id)} must be letters, digits, - or _`);
