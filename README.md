@@ -95,6 +95,71 @@ npx cuadro render video.html out.mp4 --props '{"color":"teal"}' --audio song.mp3
 | `render({ page, out, props, audio, root, onProgress })` | From `cuadro/render`, the Node API that the CLI calls. Use it in jobs. |
 | spark's API | Re-exported, so a video needs only one import. |
 
+### Scenes and themes
+
+`cuadro/scenes` has six designed scenes for an explainer video, and
+`cuadro/theme` the look they share. They live in their own modules, so
+their names (`title`, `steps`...) never clash with a video's own; map
+them in the import map too:
+
+```html
+<script type="importmap">{ "imports": {
+  "cuadro": "/node_modules/cuadro/src/index.js",
+  "cuadro/theme": "/node_modules/cuadro/src/theme.js",
+  "cuadro/scenes": "/node_modules/cuadro/src/scenes.js",
+  "spark": "/node_modules/spark/src/index.js" } }</script>
+<script type="module">
+  import { composition } from 'cuadro';
+  import { theme } from 'cuadro/theme';
+  import { stage, play, playLength, title, stat, endCard } from 'cuadro/scenes';
+
+  const scenes = [
+    [120, title({ length: 120, kicker: 'Meet Lumen', title: 'Notes that *find you*' })],
+    [150, stat({ length: 150, stats: [{ value: 82, suffix: '%', label: 'fewer repeated questions' }] })],
+    [110, endCard({ length: 110, logo: 'logo.svg', line: 'Try it *today*', cta: 'Start free', url: 'lumen.example' })],
+  ];
+  composition({
+    width: 1280, height: 720, fps: 30, durationInFrames: playLength(...scenes),
+    view: (frame) => stage(theme('dark', { accent: '#ff5a36' }), play(...scenes))(frame),
+  });
+</script>
+```
+
+Every scene is `scene(props) => view` and takes its `length` in frames.
+It splits that length into beats, so something moves for the whole
+scene: a highlight walks through the items, numbers count up, a mark
+sweeps under a word. Give the screen key words, not the narration. In
+any text, `*words*` are marked in the accent colour and `\n` breaks the
+line. Scenes fill any frame size, and a portrait frame stacks what sits
+side by side. [`demo/scenes.html`](demo/scenes.html) shows them all;
+add `?props={"theme":"bold"}` or `{"portrait":true}`.
+
+| `cuadro/scenes` | |
+|---|---|
+| `title({ length, kicker, title, sub })` | A kicker, the headline word by word, then a sub line. |
+| `kinetic({ length, lines })` | Short lines, one per beat, each pushing the last away, over progress bars. |
+| `stat({ length, title, stats })` | One to three `{ value, prefix, suffix, label }` numbers, each counting up in its beat while the others dim. |
+| `steps({ length, title, items })` | A list of `{ title, text }` with a highlight moving down it, the current step shown large beside it. |
+| `tiles({ length, title, items })` | Two to six `{ title, text }` tiles, with a highlight moving through them. |
+| `endCard({ length, logo, line, cta, url })` | A logo (an image URL), a line, a call to action and a URL. |
+| `stage(theme, view)` | The themed frame, with a slowly drifting glow, and `view` on top. |
+| `play([length, view], ...)` | Scenes in order, each cross-fading into the next over `Fade` (12) frames. `playLength(...)` is its length. |
+| `scene(length, body, className)` | The frame of a scene written as code: fades and drift like the others. `body(t)` gets `t.frame`, `t.enter(at)` (a spring released at frame `at`) and `t.between(a, b)` (0 to 1, eased). |
+| `beats(length, n)` | `n` back-to-back `{ from, to }` frame ranges up to the fade-out. Throws if one would be under 15 frames. |
+
+| `cuadro/theme` | |
+|---|---|
+| `theme(name, { accent, accent2 })` | The custom properties of `'light'` (the default), `'bold'` or `'dark'`, with a brand's `#rrggbb` accents over them; the text on the accent turns dark or light to stay readable. Pass it to `stage`, or as any element's `style`. Loads the fonts. |
+| `themes` | Each theme's colours and fonts. |
+
+The properties are `--bg`, `--ink`, `--muted`, `--surface`, `--line`,
+`--accent`, `--accent2` and `--on-accent` for colour; `--font-display`,
+`--font-body`, `--display-weight` and `--tracking` for type; the type
+scale `--t-small` (28.8 px at 720p, the smallest text), `--t-body`,
+`--t-3`, `--t-2`, `--t-1`, `--t-hero` and `--t-mega`; and `--pad-x`,
+`--pad-y`, `--gap` and `--radius`. Sizes are in container units of the
+stage, so a code scene drawn with them scales like the rest.
+
 | `cuadro render <page> <out.mp4>` | |
 |---|---|
 | `--props json` | Props merged over the composition's defaults. |
@@ -199,7 +264,7 @@ narration also pays for speech.
 
 ## How it works
 
-Eight ideas, a module each:
+Nine ideas, a module each:
 
 1. **Time is a signal** ([`src/composition.js`](src/composition.js)). The
    composition owns `frame`, and everything drawn is computed from it.
@@ -261,6 +326,16 @@ Eight ideas, a module each:
    other origin), shoots five frames, and sends back either the problem
    or the frames for review, until the model says `OK` or the rounds run
    out. Once a file has passed, a later failure falls back to it.
+9. **A scene is a schedule** ([`src/scenes.js`](src/scenes.js), with
+   [`src/theme.js`](src/theme.js)). A scene cuts its length into beats
+   with `beats()` and ties each motion to a beat, so a longer voice line
+   gives slower beats, never a still frame. All sizes are theme
+   properties in container units (`cqmin`), so one stylesheet fits every
+   frame size. The fonts ship with cuadro and load as `FontFace`s when
+   `theme()` runs, so `setFrame` waits for them and text never falls
+   back to a system font. `play()` overlaps the scenes, and each fades out
+   in the first half of the overlap and in during the second, over a
+   backdrop that never stops.
 
 ## Tests
 
@@ -309,6 +384,13 @@ others run in Chromium and ffmpeg against
   forever comes back as a timeout; narration spoken from the model's
   script, its voice.json handed back.
 
+- scenes: beats tile each scene up to its fade-out, none under 15
+  frames, and a too-short scene is refused; `playLength` counts the
+  overlaps; a brand accent gets readable text on it, and bad theme names
+  and colours fail. Every tenth frame of the demo, in landscape and
+  portrait, has no text under 28 px, nothing outside the frame, nothing
+  clipped, and content spanning at least 45% of the height.
+
 `npm run types` type-checks the declarations against
 [`test/types.ts`](test/types.ts).
 
@@ -331,12 +413,17 @@ Lines of code, not counting blank lines or comments:
 | `src/voice.js` | 55 |
 | `src/llm.js` | 88 |
 | `src/make.js` | 192 |
+| `src/theme.js` | 55 |
+| `src/scenes.js` | 247 |
 | `src/index.js` | 5 |
 | `bin/cuadro.js` | 114 |
-| **total** | **938** |
+| **total** | **1240** |
+
+`scenes.js` counts its stylesheet, about 85 lines of CSS.
 
 The only dependencies are spark and playwright-core, plus ffmpeg from
-the system.
+the system. Inter and Space Grotesk (Latin, 70 KB of woff2) ship in
+[`src/fonts`](src/fonts) under the SIL Open Font License.
 
 ## Left out
 
@@ -346,6 +433,12 @@ the system.
   gradient on every frame.
 - Frame-exact embedded video clips, captions, and transparent video.
 - An embeddable React player. The preview is the page itself.
+- In scenes: transitions other than cross-fades, icons, images other
+  than the end card's logo, scene types no video has needed yet, and
+  letters outside the fonts' Latin subset. A theme has no easing (motion
+  is worked out in JS from the frame; CSS never animates) and no logo
+  (cuadro waits for an `<img>`, not a CSS image, so the logo is a prop
+  of the end card).
 - Waiting on anything except fonts and `<img>`: there is no "delay
   render" hook. CSS background images and fetched data must be ready
   before `composition` is called.
