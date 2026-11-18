@@ -336,7 +336,8 @@ function page(libs, narrated) {
 /** How long to wait for the page to call composition, in milliseconds. */
 const LoadTimeout = 10000;
 
-// TODO: once render.js's still() is merged, shoot the review's stills with it instead of shoot() below.
+// Not still() from render.js: that serves the whole root and lets the page reach the network, and returns a file
+// rather than the page's errors; the model's code runs here, so make keeps its own sandboxed tab.
 /**
  * Opens out/index.html and shoots the given frames; resolves to { problem, shots, frames } (problem undefined if it passed).
  * The model's code runs here, so the server serves only out and the two libraries, and the tab may load
@@ -361,8 +362,16 @@ async function shoot(tab, url, frames, timeout) {
   const errors = [];
   const shots = [];
   const failure = (why) => ({ problem: [...errors, why].filter(Boolean).join('\n'), shots });
-  const broke = new Promise((ok) => tab.on('pageerror', ok)); // ends the wait for composition()
-  tab.on('pageerror', (e) => errors.push(`page error: ${e.message}`));
+  // Page errors come from the protocol rather than 'pageerror': a syntax error has no location in Playwright's, but here has
+  // the file, line and column (counted from 0).
+  const cdp = await tab.context().newCDPSession(tab);
+  await cdp.send('Runtime.enable');
+  const broke = new Promise((ok) => cdp.on('Runtime.exceptionThrown', ok)); // ends the wait for composition()
+  cdp.on('Runtime.exceptionThrown', ({ exceptionDetails: d }) => {
+    const message = d.exception?.preview?.properties?.find((p) => p.name === 'message')?.value ?? d.exception?.value ?? d.text;
+    const place = d.url ? ` (${new URL(d.url).pathname}:${d.lineNumber + 1}:${d.columnNumber + 1})` : '';
+    errors.push(`page error: ${message}${place}`);
+  });
   tab.on('response', (r) => r.status() >= 400 && !r.url().endsWith('/favicon.ico') && errors.push(`HTTP ${r.status()} for ${r.url()}`));
   try {
     await within(tab.goto(url), timeout, 'loading the page');

@@ -164,9 +164,9 @@ test('make: a schema error, a broken code scene, then a working script, then OK'
   const index = await readFile(result.page, 'utf8');
   assert.match(index, /"cuadro\/player":"\/src\/player.js"/);
   assert.match(index, /player\(\{ voice: null \}\)/);
-  assert.deepEqual(steps, [
+  assert.deepEqual(steps.map((m) => m.replace(/ \(\/.*\)$/, '')), [
     'round 1: asking anthropic…', 'round 1: script.json: scenes[0].props.items: expected an array',
-    'round 2: asking anthropic…', 'round 2: page error: boom at load',
+    'round 2: asking anthropic…', 'round 2: page error: boom at load', // the place follows, as ' (/path:1:7)'
     'round 3: asking anthropic…', 'round 3: ok, reviewing',
     'round 4: asking anthropic…', `done: ${result.file}`,
   ]);
@@ -262,4 +262,13 @@ test('make: narration speaks the say lines, and the stills follow their lengths'
   // 45 frames a line: lengths 65, 65 and 90; stills 3/4 into the designed scenes, three in the code scene
   assert.match(lastText(s, 1), /at frames 49, 69, 89, 108, 174:/);
   assert.match(await readFile(join(out, 'index.html'), 'utf8'), /await player\(\);/);
+});
+
+test('make: a syntax error in a code scene names its file and line', async (t) => {
+  process.env.ANTHROPIC_API_KEY = 'ka';
+  const out = await folder(t);
+  const s = await fakeServer([reply(script, { 'scenes/box.js': 'const a = 1;\nvar var = 2;\n' }), reply(script, { 'scenes/box.js': box }), said('OK')]);
+  t.after(() => s.close());
+  await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out });
+  assert.match(lastText(s, 1), /scenes\/box\.js:2:\d+/);
 });
