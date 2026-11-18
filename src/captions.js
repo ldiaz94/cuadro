@@ -7,8 +7,8 @@
 //   │      band by --safe-bottom         │
 //   │                                    │
 //   │    ┌──────────────────────────┐    │ ┐
-//   │    │ and meet ▐volunteer▌ men │    │ │ CaptionBand: at most two lines
-//   │    └──────────────────────────┘    │ ┘ on a dark backdrop
+//   │    │ and meet ▐volunteer▌ men │    │ │ CaptionBand: one line on a
+//   │    └──────────────────────────┘    │ ┘ dark backdrop
 //   └────────────────────────────────────┘
 //
 // words are a video's spoken words, [{ text, start, end }] in seconds from
@@ -27,8 +27,8 @@ import { computed, html } from 'spark';
 import { currentComposition } from './composition.js';
 import { word } from './level.js';
 
-/** The most characters in a phrase: two lines at the caption size, at most, and usually one. */
-export const MaxChars = 42;
+/** The most characters in a phrase: one line at the caption size in landscape (about 50 fit), two in portrait. */
+export const MaxChars = 38;
 
 /** Words a phrase needs before a comma may end it. */
 const MinWords = 3;
@@ -42,8 +42,8 @@ const Linger = 0.6;
 /** How early a phrase shows before its first word, in seconds, so the eye is there in time. */
 const Early = 0.1;
 
-/** The height scenes keep clear at the bottom of the frame for the captions, as --safe-bottom. */
-export const CaptionBand = '21cqmin';
+/** The height scenes keep clear at the bottom for the captions, as --safe-bottom: one line in landscape, two in a portrait frame, where fewer characters fit. */
+export const CaptionBand = 'max(15cqmin, 12cqh)';
 
 /** The words grouped into phrases: [{ start, end, text, words }], times in seconds. */
 export function cues(words) {

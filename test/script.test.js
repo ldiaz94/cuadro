@@ -178,7 +178,7 @@ export default ({ length, words }) => scene(length, () => html\`<p id="got">\${w
       const list = document.querySelector('.cq-list').getBoundingClientRect();
       return document.querySelector('.cq-stage').getBoundingClientRect().bottom - list.bottom;
     });
-    assert.ok(gap >= 0.21 * 720, `the list ends ${gap}px above the bottom`);
+    assert.ok(gap >= 0.15 * 720, `the list ends ${gap}px above the bottom`);
     const second = 75 + Air - Fade; // where scene 2 starts
     assert.deepEqual(await shown(second + 20), ['Y fin.', 'fin.']);
     assert.equal(await b.page.textContent('#got'), 'Y|fin.');
