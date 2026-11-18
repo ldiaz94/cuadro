@@ -149,7 +149,12 @@ test('make: a broken file, then a working one, then OK', async (t) => {
   assert.equal(bodies[2].messages.length, 5);
   assert.equal(await readFile(result.file, 'utf8'), working);
   assert.match(await readFile(join(out, 'index.html'), 'utf8'), /"cuadro":"\/src\/index.js"/);
-  assert.deepEqual(steps.map((m) => m.split(':')[0]), ['round 1', 'round 2', 'done']);
+  assert.deepEqual(steps, [
+    'round 1: asking anthropic…', 'round 1: page error: boom at load',
+    'round 2: asking anthropic…', 'round 2: ok, reviewing',
+    'round 3: asking anthropic…', `done: ${result.file}`,
+  ]);
+  assert.equal(result.reviewed, true);
 });
 
 test('make: a reply without a js block is a clear error', async (t) => {
@@ -173,6 +178,31 @@ test('make: after a file passed, a failed fix and then an API error leave the pa
   const result = await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out, onStep: (m) => steps.push(m) });
   assert.equal(await readFile(result.file, 'utf8'), working);
   assert.match(steps.at(-2), /^stopped: anthropic: HTTP 400/);
+  assert.equal(result.reviewed, false);
+});
+
+test('make: a review that fails twice keeps the passed file, unreviewed', async (t) => {
+  process.env.ANTHROPIC_API_KEY = 'ka';
+  const out = await folder(t);
+  const s = await fakeServer([said('```js\n' + working + '```'), said('', { stop_reason: 'max_tokens' }), said('', { stop_reason: 'max_tokens' })]);
+  t.after(() => s.close());
+  const steps = [];
+  const result = await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out, onStep: (m) => steps.push(m) });
+  assert.equal(s.requests.length, 3);
+  assert.equal(result.reviewed, false);
+  assert.equal(await readFile(result.file, 'utf8'), working);
+  assert.match(steps.at(-1), /^not reviewed: .* passed the check/);
+});
+
+test('make: a review that fails once and then says OK is reviewed', async (t) => {
+  process.env.ANTHROPIC_API_KEY = 'ka';
+  const out = await folder(t);
+  const s = await fakeServer([said('```js\n' + working + '```'), said('', { stop_reason: 'max_tokens' }), said('OK')]);
+  t.after(() => s.close());
+  const steps = [];
+  const result = await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out, onStep: (m) => steps.push(m) });
+  assert.equal(result.reviewed, true);
+  assert.match(steps.join('\n'), /round 2: anthropic: the reply was cut off at the token limit; asking again/);
 });
 
 test('make: a still video passes, with a note for the review', async (t) => {

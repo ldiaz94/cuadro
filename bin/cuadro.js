@@ -36,6 +36,7 @@ const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audi
   --rounds n     revisions after the first draft, at most (default: 3)
   --base-url u   the provider's API address, to use another server
   --voice-provider p, --voice v   narrate it, with a voice provider above
+  It exits 3 when the file passed the check but the model did not approve it.
 
   API keys come from ELEVENLABS_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY,
   DASHSCOPE_API_KEY and ANTHROPIC_API_KEY. OPENAI_BASE_URL points openai at
@@ -116,12 +117,13 @@ async function runMake() {
   if (!Number.isInteger(rounds) || rounds < 0) fail('--rounds must be a whole number');
   if (values.voice && !values['voice-provider']) fail('make takes --voice only with --voice-provider');
   try {
-    const { page } = await make({
+    const { page, reviewed } = await make({
       prompt: positionals[1], provider: values.provider, model: values.model, baseUrl: values['base-url'], out: values.out, rounds,
       voiceProvider: values['voice-provider'], voice: values.voice, onStep: (m) => console.error(m),
     });
     console.error(`preview: serve this folder with byte ranges (npx serve .) and open /${relative('.', page)}`);
     console.error(`render:  npx cuadro render ${page} out.mp4`);
+    if (!reviewed) process.exit(3);
   } catch (e) {
     console.error(e.message);
     process.exit(1);

@@ -168,10 +168,13 @@ The model gets cuadro's types and this guide, and replies with a whole
 Chromium. A page error, a failed frame, or a step that takes over 30
 seconds goes back to the model to fix. A file that runs is sent back as
 five screenshots for review, with a note if they are all the same: the
-model answers `OK` or a better file. It stops at `OK` or after `--rounds`
-revisions (default 3), and keeps the last file that ran, also when a
-later reply or request fails. Progress goes to stderr; at the end it says
-how to preview and render the result.
+model answers `OK` or a better file; a review request that fails is asked
+once more. It stops at `OK` or after `--rounds` revisions (default 3), and
+keeps the last file that ran, also when a later reply or request fails.
+Progress goes to stderr, a line as each request starts; at the end it
+says how to preview and render the result. If the model never approved
+the file it kept (the review failed, or the rounds ran out), it says so
+and exits with status 3.
 
 The model's code runs on your machine, so the check keeps it in a small
 box: cuadro's server hands the page only the output folder, cuadro and
@@ -188,7 +191,7 @@ spark, and the tab may not load anything from another origin.
 speaks it into `<out>/voice`, and the video's scenes follow the lines'
 lengths. From Node, `make({ prompt, provider, model, baseUrl, out, rounds,
 root, voiceProvider, voice, timeout, onStep })` in `cuadro/make` does the
-same.
+same, and resolves to `{ page, file, reviewed }`.
 
 The result is a source file: read it, edit it and commit it like any
 other video. Every round is a paid request to the provider, and

@@ -24,4 +24,11 @@ export function make(options: {
   timeout?: number;
   /** Called with each progress message. */
   onStep?: (message: string) => void;
-}): Promise<{ page: string; file: string }>;
+}): Promise<{
+  /** <out>/index.html, which loads video.js. */
+  page: string;
+  /** <out>/video.js, the last file that passed the check. */
+  file: string;
+  /** Whether the model saw that file's frames and approved it; false when the review failed or the rounds ran out. */
+  reviewed: boolean;
+}>;

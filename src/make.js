@@ -6,9 +6,10 @@
 // setFrame, or a step that takes too long sends the problem (and the
 // frames) back for a fixed file. A file that passes is shown to the model
 // as five frames, for one review (with a note if they are all the same):
-// it replies OK, or a better file, which is checked again. It stops at OK
-// or after `rounds` revisions, and keeps the last file that passed, also
-// when a later reply or request fails.
+// it replies OK, or a better file, which is checked again. A review
+// request that fails is asked once more. It stops at OK or after `rounds`
+// revisions, and keeps the last file that passed, also when a later reply
+// or request fails; the result says whether the model approved that file.
 // The model's code runs in a tab that may load only from cuadro's server,
 // which serves only the output folder and the two libraries.
 // With a voice provider it first asks for a narration script, speaks it
@@ -41,27 +42,32 @@ export async function make({
     return text;
   };
 
-  const narration = voiceProvider && await narrate({ prompt, out, ask, messages, voiceProvider, voiceName, onStep });
+  const narration = voiceProvider && await narrate({ prompt, out, ask, messages, voiceProvider, voiceName, provider, onStep });
   messages.push({ role: 'user', text: request(prompt, narration) });
   const file = join(out, 'video.js');
-  const passed = await revise({ ask, messages, rounds, file, check: () => check(root, out, libs, timeout), onStep });
+  const { passed, reviewed } = await revise({ ask, messages, rounds, file, check: () => check(root, out, libs, timeout), provider, onStep });
   await writeFile(file, passed);
-  onStep(`done: ${file}`);
-  return { page: join(out, 'index.html'), file };
+  onStep(reviewed ? `done: ${file}` : `not reviewed: ${file} passed the check, but the model did not approve it`);
+  return { page: join(out, 'index.html'), file, reviewed };
 }
 
 /**
- * Has the model write, fix and review file until it approves or the rounds run out; resolves to the last
- * source that passed the check. Once one has passed, any later failure (a reply without code, a network
- * error) stops the loop with that source instead of losing it.
+ * Has the model write, fix and review file until it approves or the rounds run out; resolves to
+ * { passed, reviewed }: the last source that passed the check, and whether the model approved it. Once
+ * one has passed, any later failure (a reply without code, a network error) stops the loop with that
+ * source instead of losing it.
  */
-async function revise({ ask, messages, rounds, file, check, onStep }) {
-  let passed, problem, reviewing = false;
+async function revise({ ask, messages, rounds, file, check, provider, onStep }) {
+  let passed, problem, reviewing = false, reviewed = false;
   try {
     for (let round = 1; round <= rounds + 1; round++) {
-      const reply = await ask();
+      onStep(`round ${round}: asking ${provider}…`);
+      const reply = reviewing ? await twice(ask, (e) => onStep(`round ${round}: ${e.message.split('\n')[0]}; asking again`)) : await ask();
       const source = code(reply);
-      if (reviewing && !source && approves(reply)) break;
+      if (reviewing && !source && approves(reply)) {
+        reviewed = true;
+        break;
+      }
       if (!source) throw new Error('cuadro: the model replied without a ```js block holding video.js');
       await writeFile(file, source);
       const result = await check();
@@ -76,7 +82,17 @@ async function revise({ ask, messages, rounds, file, check, onStep }) {
     onStep(`stopped: ${e.message.split('\n')[0]}; keeping the last file that passed`);
   }
   if (!passed) throw new Error(`cuadro: no video.js passed the check in ${rounds + 1} tries; the last problem:\n${problem}`);
-  return passed;
+  return { passed, reviewed };
+}
+
+/** Calls request, and once more if it fails, after telling retrying(error). */
+async function twice(request, retrying) {
+  try {
+    return await request();
+  } catch (e) {
+    retrying(e);
+    return await request();
+  }
 }
 
 /** Whether a review reply approves: no code block, and the word OK at its start or its end. */
@@ -146,13 +162,14 @@ matching sequence. Read the lengths from the imported voice.json, not from the n
 }
 
 /** Asks for a narration script, speaks it into <out>/voice, and returns its { lines: [{ id, file, seconds }] }. */
-async function narrate({ prompt, out, ask, messages, voiceProvider, voiceName, onStep }) {
+async function narrate({ prompt, out, ask, messages, voiceProvider, voiceName, provider, onStep }) {
   messages.push({ role: 'user', text: `Before video.js, write the narration for this video, one line per scene:
 
 ${prompt}
 
 Reply with one \`\`\`json block holding { "lines": [{ "id": "...", "text": "..." }] }. Each id is
 unique and made of letters, digits, - or _.` });
+  onStep(`script: asking ${provider}…`);
   const reply = await ask();
   const json = reply.match(/```(?:json)?[^\n]*\n([\s\S]*?)```/)?.[1] ?? reply;
   let script;
