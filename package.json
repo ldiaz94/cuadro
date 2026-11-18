@@ -43,6 +43,10 @@
     "./make": {
       "types": "./src/make.d.ts",
       "default": "./src/make.js"
+    },
+    "./translate": {
+      "types": "./src/translate.d.ts",
+      "default": "./src/translate.js"
     }
   },
   "bin": {

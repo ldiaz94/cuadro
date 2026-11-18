@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 // cuadro's command line: `cuadro render <page> <out.mp4> [options]`,
-// `cuadro still <page> <out.png> [options]`, `cuadro voice <script.json> --provider p [options]` and
-// `cuadro make "<prompt>" --provider p [options]`.
-// Parses the arguments, calls render(), voice() or make() and shows
+// `cuadro still <page> <out.png> [options]`, `cuadro voice <script.json> --provider p [options]`,
+// `cuadro make "<prompt>" --provider p [options]` and
+// `cuadro translate <script.json> --to lang --provider p [options]`.
+// Parses the arguments, calls render(), voice(), make() or translate() and shows
 // progress on stderr: for render, one updating line on a terminal, about
 // ten lines otherwise (for job logs); for voice, one line per spoken line;
 // for make, one line per step.
-// Depends on render.js, voice.js and make.js. Leaves out every other
+// Depends on render.js, voice.js, make.js and translate.js. Leaves out every other
 // subcommand.
 import { relative } from 'node:path';
 import { parseArgs } from 'node:util';
 import { make } from '../src/make.js';
 import { render, still } from '../src/render.js';
+import { translate } from '../src/translate.js';
 import { voice } from '../src/voice.js';
 
 const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audio file] [--root dir] [--workers n]
@@ -21,7 +23,8 @@ const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audi
                    [--fps n]
        cuadro make "<prompt>" --provider p [--model m] [--out dir] [--rounds n] [--base-url url]
                    [--voice-provider p [--voice v]] [--logo file] [--brand "#hex[,#hex]"]
-                   [--music file]
+                   [--music file] [--language lang]
+       cuadro translate <script.json> --to lang --provider p [--model m] [--base-url url]
 
   --props json   props merged over the composition's defaults
   --audio file   soundtrack, cut or padded to the video's length
@@ -50,8 +53,12 @@ const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audi
   --logo file    the brand's logo, shown on the end card
   --brand list   the brand's accent colours, "#rrggbb" or "#rrggbb,#rrggbb"
   --music file   music under the narration, cut or padded to the video's length
-  The logo, colours and music are set in the script whatever the model writes.
+  --language l   the video's language, a BCP-47 code (es, pt-BR, ja): narration and screen text
+  The logo, colours, music and language are set in the script whatever the model writes.
   It exits 3 when the script passed the check but the model did not approve it.
+
+  translate writes <script>.<lang>.json beside the script, with its say lines and screen text
+  in that language (--to, a BCP-47 code), using --provider p as make does.
 
   API keys come from ELEVENLABS_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY,
   DASHSCOPE_API_KEY and ANTHROPIC_API_KEY. OPENAI_BASE_URL points openai at
@@ -66,7 +73,7 @@ try {
       provider: { type: 'string' }, voice: { type: 'string' }, model: { type: 'string' },
       out: { type: 'string' }, 'base-url': { type: 'string' },
       rounds: { type: 'string' }, fps: { type: 'string' }, 'voice-provider': { type: 'string' },
-      logo: { type: 'string' }, brand: { type: 'string' }, music: { type: 'string' },
+      logo: { type: 'string' }, brand: { type: 'string' }, music: { type: 'string' }, language: { type: 'string' }, to: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -78,7 +85,8 @@ if (values.help) { console.log(usage); process.exit(0); }
 if (positionals[0] === 'voice') await runVoice();
 if (positionals[0] === 'make') await runMake();
 if (positionals[0] === 'still') await runStill();
-if (positionals[0] !== 'render' || positionals.length !== 3) fail('expected: render <page.html> <out.mp4>, still <page.html> <out.png>, voice <script.json> or make "<prompt>"');
+if (positionals[0] === 'translate') await runTranslate();
+if (positionals[0] !== 'render' || positionals.length !== 3) fail('expected: render <page.html> <out.mp4>, still <page.html> <out.png>, voice <script.json>, make "<prompt>" or translate <script.json>');
 let props;
 try {
   props = values.props && JSON.parse(values.props);
@@ -166,12 +174,27 @@ async function runMake() {
   try {
     const { page, reviewed } = await make({
       prompt: positionals[1], provider: values.provider, model: values.model, baseUrl: values['base-url'], out: values.out, rounds,
-      voiceProvider: values['voice-provider'], voice: values.voice, logo: values.logo, music: values.music,
+      voiceProvider: values['voice-provider'], voice: values.voice, logo: values.logo, music: values.music, language: values.language,
       brand: values.brand && { accent, ...(accent2 && { accent2 }) }, onStep: (m) => console.error(m),
     });
     console.error(`preview: serve this folder with byte ranges (npx serve .) and open /${relative('.', page)}`);
     console.error(`render:  npx cuadro render ${page} out.mp4`);
     if (!reviewed) process.exit(3);
+  } catch (e) {
+    console.error(e.message);
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
+/** Runs `cuadro translate`, says where the translation went, and exits. */
+async function runTranslate() {
+  if (positionals.length !== 2) fail('expected: translate <script.json>');
+  if (!values.to) fail('translate needs --to, a language code like es');
+  if (!values.provider) fail('translate needs --provider');
+  try {
+    const file = await translate({ script: positionals[1], to: values.to, provider: values.provider, model: values.model, baseUrl: values['base-url'] });
+    console.error(`wrote ${file}`);
   } catch (e) {
     console.error(e.message);
     process.exit(1);

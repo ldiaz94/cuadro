@@ -5,7 +5,8 @@
 // the themes, and the code-scene contract (player.d.ts), and replies with
 // script.json plus a module for each `code` scene. A logo, brand colours
 // and music given to make are copied into the output folder and set over
-// every draft, so the model cannot drop them. cuadro checks the script
+// every draft, so the model cannot drop them; so is a language, in which
+// the model writes the narration and the text on screen. cuadro checks the script
 // against its schema, writes it beside an index.html that runs the player
 // in the output folder, speaks its `say` lines if there is a voice
 // provider, and opens it in Chromium. A schema error, a page error, a
@@ -38,12 +39,12 @@ import { voice } from './voice.js';
 /** Makes <out>/script.json, its code scenes and <out>/index.html from prompt; onStep(message) reports progress. */
 export async function make({
   prompt, provider, model, baseUrl, out = 'make-out', rounds = 3, root = process.cwd(),
-  voiceProvider, voice: voiceName, logo, brand, music, timeout = StepTimeout, onStep = () => {},
+  voiceProvider, voice: voiceName, logo, brand, music, language, timeout = StepTimeout, onStep = () => {},
 }) {
   if (!inside(root, out)) throw new Error(`cuadro: ${out} must be a folder inside ${resolve(root)}`);
   const libs = libraries(root);
   await mkdir(join(out, 'scenes'), { recursive: true });
-  const given = await assets(out, { logo, brand, music });
+  const given = { ...(await assets(out, { logo, brand, music })), ...(language && { language: Intl.getCanonicalLocales(language)[0] }) };
   await writeFile(join(out, 'index.html'), page(libs, Boolean(voiceProvider)));
   const system = await context();
   const messages = [{ role: 'user', text: request(prompt, Boolean(voiceProvider), given) }];
@@ -114,6 +115,7 @@ function parse(json, given) {
     if (script?.constructor === Object) {
       if (given.brand) script.brand = { ...script.brand, ...given.brand };
       if (given.music) script.music = given.music;
+      if (given.language) script.language = given.language;
     }
     return checkScript(script);
   } catch (e) {
@@ -337,11 +339,12 @@ function catalogue(dts) {
   return `\`\`\`ts\n${shared}\n${scenes.join('\n\n')}\n\`\`\``;
 }
 
-/** The first user message: the prompt, whether the lines will be spoken, and the script fields cuadro sets. */
+/** The first user message: the prompt, whether the lines will be spoken, the script fields cuadro sets, and the language. */
 function request(prompt, narrated, given) {
-  const fixed = Object.keys(given).length
+  const name = given.language && new Intl.DisplayNames(['en'], { type: 'language' }).of(given.language);
+  const fixed = (Object.keys(given).length
     ? `\ncuadro sets these fields itself, so keep them: ${JSON.stringify(given)}.${given.brand?.logo ? ' The endCard shows the logo.' : ''}\n`
-    : '';
+    : '') + (name ? `\nWrite every say line and all the text on screen in ${name} (${given.language}).\n` : '');
   return `Write script.json for this video:\n\n${prompt}\n\n${narrated
     ? 'It is narrated: every scene needs a say line.'
     : 'It is not narrated yet, so each scene lasts its type\'s default length; still write a say line for each scene.'}\n${fixed}`;

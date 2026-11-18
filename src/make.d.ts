@@ -26,6 +26,8 @@ export function make(options: {
   brand?: { accent?: string; accent2?: string };
   /** A sound file, copied into out and set as the script's music, under the narration. */
   music?: string;
+  /** The video's language, a BCP-47 code ("es", "pt-BR"): the model writes in it, and the script's language is set to it. */
+  language?: string;
   /** How long one step in Chromium may take, in milliseconds (default: 30000); a slower one is a problem sent to the model. */
   timeout?: number;
   /** Called with each progress message. */
