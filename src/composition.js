@@ -14,7 +14,7 @@ import { preview } from './preview.js';
 /** The page's composition, for views that need more than their local frame. */
 let current = null;
 
-/** Returns the page's composition: its root frame getter, fps and clips. */
+/** Returns the page's composition: root frame getter, fps, clips, and the bar's playing getter (null when rendering). */
 export function currentComposition() {
   if (!current) throw new Error('cuadro: no composition on this page yet');
   return current;
@@ -40,9 +40,9 @@ export function composition({ width, height, fps, durationInFrames, view, props 
   };
   const clips = [];
   window.cuadro = { width, height, fps, durationInFrames, clips, setFrame };
-  current = { frame, fps, clips };
+  const playing = params.has('render') ? null : preview(stage, frame, setFrame, window.cuadro);
+  current = { frame, fps, clips, playing };
   mount(stage, () => view(frame, allProps));
-  if (!params.has('render')) preview(stage, frame, setFrame, window.cuadro);
   return window.cuadro;
 }
 

@@ -2,14 +2,15 @@
 // the browser. The stage is scaled to fit the window. Play advances the
 // frame by the wall clock; that only drives the preview, never a render.
 // Keys: space plays or pauses, left and right step a frame (with shift, a
-// second).
-// Depends on spark. Leaves out audio playback, loops, and playback speed.
+// second). Audio clips play along through the playing getter it returns
+// (see audio.js).
+// Depends on spark. Leaves out loops and playback speed.
 import { signal, effect, untrack, html, mount } from 'spark';
 
 /** Height of the bar, in CSS pixels. */
 const BarHeight = 48;
 
-/** Wraps stage in a scaled frame and adds the bar under it. */
+/** Wraps stage in a scaled frame and adds the bar under it; returns a getter for whether it plays. */
 export function preview(stage, frame, setFrame, { width, height, fps, durationInFrames }) {
   const last = durationInFrames - 1;
   const [playing, setPlaying] = signal(false);
@@ -52,4 +53,5 @@ export function preview(stage, frame, setFrame, { width, height, fps, durationIn
       <input type="range" min="0" max=${last} style="flex:1" .value=${frame} @input=${(e) => seek(Number(e.target.value))}>
       <span style="font-variant-numeric:tabular-nums">${() => `${frame()} / ${last} · ${(frame() / fps).toFixed(2)}s`}</span>
     </div>`);
+  return playing;
 }

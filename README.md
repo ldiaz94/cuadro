@@ -172,7 +172,10 @@ Seven ideas, a module each:
    Without `?render`, the composition scales its stage to fit the window
    and adds a bar with play/pause, a scrubber and the frame number. Play
    moves the frame by the wall clock. That is fine for watching, and it
-   is never used when rendering.
+   is never used when rendering. Each mounted audio clip is an `<audio>`
+   element that plays and pauses with the bar and seeks when you scrub
+   (the browser seeks only in files served with byte ranges, as
+   `npx serve` does and `python3 -m http.server` does not).
 5. **Sound is a record** ([`src/audio.js`](src/audio.js)). An `audio`
    view draws nothing. When it mounts, it works out the composition frame
    at which its own frame is 0, and adds `{ src, from, volume }` to
@@ -229,7 +232,8 @@ others run in Chromium and ffmpeg against
   heard from their frames until their sequence or file ends (measured by
   detecting silence in the mix); a clip in a sequence never reached is
   never heard; `--audio` plays together with the clips; the same input
-  gives the same decoded audio twice.
+  gives the same decoded audio twice; in the preview, a clip is an
+  `<audio>` element while it is mounted, and seeks with the scrubber.
 
 `npm run types` type-checks the declarations against
 [`test/types.ts`](test/types.ts).
@@ -243,8 +247,8 @@ Lines of code, not counting comments or blank lines:
 | `src/animate.js` | 61 |
 | `src/timeline.js` | 20 |
 | `src/composition.js` | 41 |
-| `src/audio.js` | 17 |
-| `src/preview.js` | 45 |
+| `src/audio.js` | 36 |
+| `src/preview.js` | 46 |
 | `src/render.js` | 95 |
 | `src/serve.js` | 32 |
 | `src/chromium.js` | 19 |

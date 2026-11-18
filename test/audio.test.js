@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { render } from '../src/render.js';
+import { open } from './browser.js';
 
 // The tones live under the repo root, so the render's server can serve them.
 const root = new URL('..', import.meta.url).pathname;
@@ -44,4 +45,32 @@ test('the same input renders the same audio twice', async () => {
   await run('again1.mp4');
   await run('again2.mp4');
   assert.equal(md5('again1.mp4'), md5('again2.mp4'));
+});
+
+test('preview: a mounted clip is an <audio> element that seeks with the scrubber', async () => {
+  // Our test server has no byte ranges, and Chromium seeks only in audio
+  // served by ranges, so b is served here as one range covering the file.
+  const b = await open(`/test/audio.html?props=${encodeURIComponent(JSON.stringify(props))}`, (page) =>
+    page.route('**/b.wav', (route) => {
+      const body = readFileSync(join(dir, 'b.wav'));
+      const headers = { 'content-type': 'audio/wav', 'accept-ranges': 'bytes', 'content-range': `bytes 0-${body.length - 1}/${body.length}` };
+      return route.fulfill({ status: 206, headers, body });
+    }));
+  try {
+    const { page } = b;
+    const names = () => page.$$eval('audio', (els) => els.map((el) => el.src.split('/').pop()));
+    const bAt = () => page.$eval('audio[src$="b.wav"]', (el) => el.currentTime);
+    assert.deepEqual(await names(), []);
+    await page.fill('input[type=range]', '17');
+    assert.deepEqual(await names(), ['a.wav', 'b.wav']);
+    await page.waitForFunction(() => document.querySelector('audio[src$="b.wav"]').readyState === 4);
+    assert.equal(await bAt(), 0.2);
+    await page.fill('input[type=range]', '18');
+    assert.equal(await bAt(), 0.3);
+    await page.fill('input[type=range]', '25'); // b's sequence has ended
+    assert.deepEqual(await names(), ['a.wav']);
+    assert.deepEqual(b.errors, []);
+  } finally {
+    await b.close();
+  }
 });
