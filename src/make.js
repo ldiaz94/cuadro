@@ -236,13 +236,16 @@ ${Object.entries(themes).map(([name, t]) => `  - ${name}: background ${t['--bg']
 
 # Writing a good video
 
-- Five to seven scenes, telling a story: a hook (a kinetic or title scene that names the viewer's
-  problem), why it matters (a stat with a real figure, or kinetic lines), how it works (steps), the
-  one idea that sets this apart (often the code scene), what you get (tiles), and an endCard.
-- Put key words on screen, never the narration itself: headlines of a few words, item titles of
-  one to three words, item texts of at most five. Mark one or two key words per headline with
+- Five to seven scenes telling a story: hook, why it matters, how it works, what sets it apart,
+  and an endCard. Choose each scene's type for what it says, not from a fixed order.
+- Open with a hook: a kinetic scene with the boldest claim or the viewer's problem in two to four
+  short lines; a title only when there is no claim to make.
+- When the request or the facts hold a number (9x, 70%, 3 steps, $0), show it in a stat scene:
+  "9x more likely" is { "value": 9, "suffix": "x", "label": "more likely to get hired" }.
+- Vary the layout: no type twice in a row, and no type more than twice in the video.
+- On screen go only key words, never the narration: headlines of a few words, item titles of one
+  to three words, item texts of at most five. Mark one or two key words per headline with
   *asterisks*.
-- Vary the scenes: don't use the same type twice in a row.
 - Use only facts the request gives or that you are sure of; never invent figures for a stat scene.
 - Prefer designed scenes; they are tested and look good. Write a code scene (at most two) only when
   an idea needs something visual the designed scenes cannot show: a transformation, a flow between
