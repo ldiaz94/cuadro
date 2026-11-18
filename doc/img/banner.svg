@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300">
+<title>cuadro: videos in code, frame by frame</title>
+<rect width="1200" height="300" rx="24" fill="#1d2440"/>
+<!-- faint film frames -->
+<g fill="none" stroke="#fff6d6" stroke-opacity="0.12" stroke-width="3">
+<rect x="24" y="256" width="76" height="36" rx="5"/>
+<rect x="122" y="256" width="76" height="36" rx="5"/>
+<rect x="220" y="256" width="76" height="36" rx="5"/>
+<rect x="318" y="256" width="76" height="36" rx="5"/>
+<rect x="416" y="256" width="76" height="36" rx="5"/>
+<rect x="514" y="256" width="76" height="36" rx="5"/>
+<rect x="612" y="256" width="76" height="36" rx="5"/>
+<rect x="710" y="256" width="76" height="36" rx="5"/>
+<rect x="808" y="256" width="76" height="36" rx="5"/>
+<rect x="906" y="256" width="76" height="36" rx="5"/>
+<rect x="1004" y="256" width="76" height="36" rx="5"/>
+<rect x="1102" y="256" width="76" height="36" rx="5"/>
+</g>
+<g transform="translate(40 46) scale(0.78)">
+<!-- frame -->
+<rect x="20" y="24" width="216" height="208" rx="20" fill="#e0a526" stroke="#8a5a0c" stroke-width="8"/>
+<rect x="32" y="36" width="192" height="184" rx="12" fill="none" stroke="#f6cf6a" stroke-width="5"/>
+<!-- corner ornaments -->
+<g fill="#b77a12">
+<circle cx="45" cy="49" r="7"/>
+<circle cx="211" cy="49" r="7"/>
+<circle cx="45" cy="207" r="7"/>
+<circle cx="211" cy="207" r="7"/>
+</g>
+<!-- picture -->
+<rect x="58" y="62" width="140" height="120" rx="6" fill="#1d2440" stroke="#8a5a0c" stroke-width="6"/>
+<!-- face -->
+<circle cx="106" cy="112" r="10" fill="#fff"/>
+<circle cx="150" cy="112" r="10" fill="#fff"/>
+<path d="M108 138 Q128 160 148 138" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+<!-- film sprockets -->
+<g fill="#1d2440">
+<rect x="56" y="194" width="16" height="14" rx="4"/>
+<rect x="84" y="194" width="16" height="14" rx="4"/>
+<rect x="112" y="194" width="16" height="14" rx="4"/>
+<rect x="140" y="194" width="16" height="14" rx="4"/>
+<rect x="168" y="194" width="16" height="14" rx="4"/>
+</g>
+<!-- spark -->
+<path d="M214 8 Q218 26 236 30 Q218 34 214 52 Q210 34 192 30 Q210 26 214 8Z" fill="#fff6d6" stroke="#8a5a0c" stroke-width="4" stroke-linejoin="round"/>
+</g>
+<text x="300" y="168" font-family="Georgia, 'Times New Roman', serif" font-size="128" fill="#fff6d6">cuadro</text>
+<text x="306" y="218" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#e0a526" letter-spacing="1">videos in code, frame by frame</text>
+</svg>
