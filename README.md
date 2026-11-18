@@ -287,8 +287,8 @@ script, writes it with an `index.html` into `--out` (default
 `make-out`, a folder inside the working directory), speaks its lines if
 there is a `--voice-provider`, and opens it in Chromium. A schema error,
 a page error, a failed frame, or a step that takes over 30 seconds goes
-back to the model to fix. A script that runs is sent back as one still
-per scene for review: the model answers `OK` or a better script; a
+back to the model to fix. A script that runs is sent back as stills
+for review, one per designed scene and three per code scene: the model answers `OK` or a better script; a
 review request that fails is asked once more. It stops at `OK` or after
 `--rounds` revisions (default 3), and keeps the last script that ran,
 also when a later reply or request fails. Progress goes to stderr, a line
@@ -380,10 +380,10 @@ Ten ideas, a module each:
    the model's script against the schema, writes it and its code scenes,
    speaks its lines, opens it in Chromium (on a server limited to the
    output folder and the two libraries, in a tab that may reach no
-   other origin), shoots a still per scene, and sends back either the
-   problem or the stills for review, until the model says `OK` or the
-   rounds run out. Once a script has passed, a later failure falls back
-   to it. What the model learns about the scenes is read from
+   other origin), shoots a still per scene (three for a code scene),
+   and sends back either the problem or the stills for review, until
+   the model says `OK` or the rounds run out. Once a script has passed,
+   a later failure falls back to it. What the model learns about the scenes is read from
    `scenes.d.ts` and the checker's table, so it cannot drift from them.
 9. **A scene is a schedule** ([`src/scenes.js`](src/scenes.js), with
    [`src/theme.js`](src/theme.js)). A scene cuts its length into beats
@@ -444,7 +444,7 @@ others run in Chromium and ffmpeg against
   refusal and cut-off replies; an error that leaves out the key; a
   script with a schema error sent back with its path, then one whose code
   scene throws sent back with its error, then a working one and `OK`
-  (one still per scene, the working files kept); a code scene missing
+  (one still per designed scene and three for the code scene, the working files kept); a code scene missing
   from the reply sent back, and one named on its first line found; a
   reply with no `json` block; `out` outside the root, or the root
   itself, refused; after a passed script, a failed fix and an API error

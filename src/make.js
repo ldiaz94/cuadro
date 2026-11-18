@@ -9,8 +9,8 @@
 // provider, and opens it in Chromium. A schema error, a page error, a
 // failed setFrame, or a step that takes too long sends the problem (and
 // the frames) back for a fix. A script that passes is shown to the model
-// as one still per scene, for one review: it replies OK, or a better
-// script, which is checked again. A review request that fails is asked
+// as stills (one per designed scene, three per code scene) for review:
+// it replies OK, or a better script, which is checked again. A review request that fails is asked
 // once more. It stops at OK or after `rounds` revisions, and keeps the last
 // script that passed, also when a later reply or request fails; the result
 // says whether the model approved it.
@@ -60,7 +60,7 @@ export async function make({
       onLine: ({ id, index, total, skipped }) => onStep(`voice ${index + 1}/${total}: ${id}${skipped ? ' (unchanged)' : ''}`),
     });
   };
-  /** Checks a draft against the schema, saves it, and shoots a still per scene in Chromium. */
+  /** Checks a draft against the schema, saves it, and shoots its stills in Chromium. */
   const attempt = async (draft) => {
     const script = parse(draft.script);
     if (script.problem) return script;
