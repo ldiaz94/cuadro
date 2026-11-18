@@ -16,11 +16,16 @@
 //   beats tile [0, length - Fade); the fades overlap the first and last,
 //   and the scenes before and after when played with play().
 //
+// Given its narration's `words` (voice.json), kinetic starts each line,
+// and steps and tiles move to each item, as the line says it (cued()).
+//
 // stage(theme(...), view) draws the themed frame with a slowly drifting
 // glow behind the view; play(...) plays scenes in order, each one
 // cross-fading into the next. Sizes come from theme.js's custom
 // properties in container units, so the scenes fill any frame size, and
-// a portrait frame stacks what sits side by side in landscape.
+// a portrait frame stacks what sits side by side in landscape. A stage
+// whose theme sets --safe-bottom (captions.js's CaptionBand) keeps the
+// scenes above that band.
 // Depends on spark, animate.js, timeline.js and composition.js (for fps).
 // Leaves out transitions other than cross-fades, icons and images other
 // than the end card's logo, and props that no video has needed yet.
@@ -116,16 +121,19 @@ export function title({ length, kicker, title, sub }) {
 }
 
 /** Two to four short lines, one per beat, each arriving word by word below the last, which dims. */
-export function kinetic({ length, lines }) {
-  const windows = beats(length, lines.length);
-  return scene(length, (t) => html`
+export function kinetic({ length, lines, words: said }) {
+  const even = beats(length, lines.length);
+  return scene(length, (t) => {
+    const windows = cued(even, lines, said);
+    return html`
     <div class="cq-lines">${lines.map((line, i) => {
       const { from, to } = windows[i];
       const last = i === lines.length - 1;
       return html`<h2 class="cq-display cq-hero" style=${() => ({ opacity: 1 - (last ? 0 : 0.65 * t.between(to - 6, to + 6)) })}>
         ${words(line, t, from, from + 10)}</h2>`;
     })}</div>
-    ${progress(t, windows)}`, { className: 'cq-kinetic' });
+    ${progress(t, windows)}`;
+  }, { className: 'cq-kinetic' });
 }
 
 /** How large the numbers are for 1, 2 or 3 of them, in --t-mega. */
@@ -150,15 +158,17 @@ export function stat({ length, title, stats }) {
 }
 
 /** A list of `{ title, text }` with a highlight moving down it, one step per beat, the current one shown large. */
-export function steps({ length, title, items }) {
-  const windows = beats(length, items.length);
+export function steps({ length, title, items, words: said }) {
+  const even = beats(length, items.length);
   /** Where the highlight is, in rows from the top: it moves one row at the start of each beat after the first. */
-  const row = (t) => windows.slice(1).reduce((sum, w) => sum + t.between(w.from - 6, w.from + 6), 0);
-  return scene(length, (t) => html`
+  const row = (t, windows) => windows.slice(1).reduce((sum, w) => sum + t.between(w.from - 6, w.from + 6), 0);
+  return scene(length, (t) => {
+    const windows = cued(even, items.map((item) => item.title), said);
+    return html`
     ${title && html`<h2 class="cq-display cq-head" style=${() => rise(t.enter(0))}>${title}</h2>`}
     <div class="cq-steps-body">
       <ol class="cq-list" style=${{ '--n': items.length }}>
-        <i class="cq-pill" style=${() => ({ transform: `translateY(${100 * row(t)}%)` })}></i>
+        <i class="cq-pill" style=${() => ({ transform: `translateY(${100 * row(t, windows)}%)` })}></i>
         ${items.map((item, i) => html`<li style=${() => ({ ...rise(t.enter(1 + 3 * i)), opacity: Math.min(1, t.enter(1 + 3 * i)) * (0.45 + 0.55 * active(t, windows, i)) })}>
           <span class="cq-num">${i + 1}</span>${item.title}</li>`)}
       </ol>
@@ -172,15 +182,18 @@ export function steps({ length, title, items }) {
         ${item.text && html`<p>${item.text}</p>`}
       </div>`)}
       ${progress(t, [{ from: 0, to: length - Fade }])}</div>
-    </div>`, { className: 'cq-steps' });
+    </div>`;
+  }, { className: 'cq-steps' });
 }
 
 /** A grid of 2-6 `{ title, text }` tiles that arrive together, then a highlight moving through them, a tile per beat. */
-export function tiles({ length, title, items }) {
+export function tiles({ length, title, items, words: said }) {
   if (!(items.length >= 2 && items.length <= 6)) throw new Error('tiles: give two to six tiles');
-  const windows = beats(length, items.length);
+  const even = beats(length, items.length);
   const columns = items.length === 4 ? 2 : Math.min(items.length, 3);
-  return scene(length, (t) => html`
+  return scene(length, (t) => {
+    const windows = cued(even, items.map((item) => item.title), said);
+    return html`
     ${title && html`<h2 class="cq-display cq-head" style=${() => rise(t.enter(0))}>${title}</h2>`}
     <div class="cq-grid" style=${{ '--cols': columns }}>${items.map((item, i) => html`<div class="cq-tile" style=${() => {
       const a = active(t, windows, i);
@@ -190,7 +203,8 @@ export function tiles({ length, title, items }) {
       <span class="cq-index">${String(i + 1).padStart(2, '0')}</span>
       <h3 class="cq-display">${item.title}</h3>
       ${item.text && html`<p>${item.text}</p>`}
-    </div>`)}</div>`, { className: 'cq-tiles' });
+    </div>`)}</div>`;
+  }, { className: 'cq-tiles' });
 }
 
 /** The last word: a logo (an image URL) and a line, then a call to action and a URL, held to the end. */
@@ -204,6 +218,60 @@ export function endCard({ length, logo, line, cta, url }) {
       '--s': ((t.frame() - second.from) % 75) / 30, // a sheen crosses it in 30 frames, every 75
     })}>${cta}</span>`}
     ${url && html`<p class="cq-url" style=${() => rise(t.enter(second.from + 10))}>${url}</p>`}`, { className: 'cq-end', fadeOut: false });
+}
+
+/** Frames before its word that a cued beat starts, so the change lands as the word is heard. */
+const Lead = 4;
+
+/**
+ * The beats `even` (from beats()), moved so each starts Lead frames before the first narration word that
+ * matches its key (an item's title or a line) is said; keys never said fall evenly between those that
+ * are. Without words, or if two beats would start under MinBeat apart, it is `even`. It reads the fps,
+ * so it runs while drawing.
+ */
+function cued(even, keys, said) {
+  if (!said?.length) return even;
+  const fps = currentComposition().fps;
+  const span = even.at(-1).to;
+  const anchors = []; // [key index, start frame] of the keys found
+  let next = 0; // the first word a key may match: keys are said in order
+  keys.forEach((key, i) => {
+    const wanted = keyWords(key);
+    const j = said.findIndex((w, k) => k >= next && wanted.some((x) => alike(x, plain(w.text))));
+    if (j >= 0) {
+      anchors.push([i, Math.max(0, Math.round(said[j].start * fps) - Lead)]);
+      next = j + 1;
+    }
+  });
+  if (!anchors.length) return even;
+  if (anchors[0][0] !== 0) anchors.unshift([0, 0]);
+  anchors.push([keys.length, span]);
+  const starts = [];
+  for (let a = 1; a < anchors.length; a++) {
+    const [[i0, f0], [i1, f1]] = [anchors[a - 1], anchors[a]];
+    for (let i = i0; i < i1; i++) starts[i] = Math.round(f0 + ((f1 - f0) * (i - i0)) / (i1 - i0));
+  }
+  const windows = starts.map((from, i) => ({ from, to: starts[i + 1] ?? span }));
+  return windows.every((w) => w.to - w.from >= MinBeat) ? windows : even;
+}
+
+/** The words of a key worth matching: lower case, letters and digits only, the short ones dropped if any are long. */
+function keyWords(key) {
+  const all = key.split(/\s+/).map(plain).filter(Boolean);
+  const long = all.filter((w) => w.length >= 3);
+  return long.length ? long : all;
+}
+
+/** A word lower-cased, without accents or punctuation, for matching. */
+function plain(word) {
+  return word.toLowerCase().normalize('NFD').replace(/[^\p{L}\p{N}]/gu, '');
+}
+
+/** Whether two plain words are the same word, give or take an ending: equal, or sharing their first five letters (or all of a shorter one's four). */
+function alike(a, b) {
+  if (Math.min(a.length, b.length) < 4) return a === b;
+  const n = Math.min(5, a.length, b.length);
+  return a.slice(0, n) === b.slice(0, n);
 }
 
 /** Style for something rising into place as p goes from 0 to 1 (and a little past). */
@@ -256,7 +324,8 @@ const Css = `
   font: 450 var(--t-body)/1.3 var(--font-body); -webkit-font-smoothing: antialiased; }
 .cq-stage *, .cq-stage *::before, .cq-stage *::after { box-sizing: border-box; }
 .cq-glow i { position: absolute; left: 0; top: 0; width: 90cqmax; height: 90cqmax; margin: -45cqmax 0 0 -45cqmax; }
-.cq-scene { position: absolute; inset: 0; padding: var(--pad-y) var(--pad-x); display: flex; flex-direction: column; justify-content: center; }
+.cq-scene { position: absolute; inset: 0; padding: var(--pad-y) var(--pad-x); display: flex; flex-direction: column; justify-content: center;
+  padding-bottom: max(var(--pad-y), calc(var(--safe-bottom, 0px) + 3cqmin)); }
 .cq-scene > * { flex: none; }
 .cq-scene :where(h1, h2, h3, p, ol) { margin: 0; padding: 0; }
 .cq-display { font-family: var(--font-display); font-weight: var(--display-weight); letter-spacing: var(--tracking); line-height: 1.04; }
@@ -274,7 +343,7 @@ const Css = `
 .cq-sub { max-width: 26em; font-size: var(--t-3); color: var(--muted); }
 
 .cq-lines { display: flex; flex-direction: column; gap: 3cqh; }
-.cq-progress { position: absolute; left: var(--pad-x); right: var(--pad-x); bottom: 6cqh; display: flex; gap: 1.2cqmin; }
+.cq-progress { position: absolute; left: var(--pad-x); right: var(--pad-x); bottom: max(6cqh, var(--safe-bottom, 0px)); display: flex; gap: 1.2cqmin; }
 .cq-progress > i { flex: 1; height: 0.5cqmin; border-radius: 1cqmin; background: var(--line); overflow: hidden; }
 .cq-progress > i > i { display: block; height: 100%; background: var(--accent); transform-origin: left; }
 

@@ -78,3 +78,26 @@ test('scenes: text of 28 px or more, inside the frame, filling 60% of its height
     }
   }
 });
+
+test('steps move to each item as the narration says its title', async () => {
+  const b = await open();
+  try {
+    const rows = await b.page.evaluate(async () => {
+      const { composition } = await import('/src/index.js');
+      const { steps, stage } = await import('/src/scenes.js');
+      const { theme } = await import('/src/theme.js');
+      const items = [{ title: 'Sign up free' }, { title: 'Video intro' }, { title: 'Meet mentors' }];
+      const said = ['Sign', 'up', 'free,', 'record', 'a', 'video', 'intro,', 'and', 'meet', 'mentors.'].map((text, i) => ({ text, start: i * 0.5, end: i * 0.5 + 0.4 }));
+      const c = composition({ width: 640, height: 360, fps: 30, durationInFrames: 180, view: stage(theme(), steps({ length: 180, items, words: said })) });
+      const row = async (n) => {
+        await c.setFrame(n);
+        return Number(/translateY\(([\d.]+)%\)/.exec(document.querySelector('.cq-pill').style.transform)[1]) / 100;
+      };
+      // "video" is said at frame 75 and "meet" at 120; evenly, the moves would be at 56 and 112.
+      return [await row(60), await row(85), await row(108), await row(130)];
+    });
+    assert.deepEqual(rows.map((r) => Math.round(r * 10) / 10), [0, 1, 1, 2]);
+  } finally {
+    await b.close();
+  }
+});

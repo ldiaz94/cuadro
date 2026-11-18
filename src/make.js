@@ -331,7 +331,7 @@ function catalogue(dts) {
     const found = dts.match(new RegExp(`/\\*\\* (.*) \\*/\\nexport function ${name}\\(props: (\\{[\\s\\S]*?\\})\\): View;`));
     if (!found) throw new Error(`cuadro: scenes.d.ts has no ${name}(props)`);
     const limits = Object.entries(props.props).filter(([, p]) => p.type === 'array').map(([key, p]) => `${key}: ${p.min} to ${p.max} items`);
-    const shape = found[2].replace(/length: number;\s*/, '').replace(/\s+/g, ' ');
+    const shape = found[2].replace(/length: number;\s*|;?\s*words\?: Word\[\];?/g, '').replace(/\s+/g, ' ');
     return `// ${found[1].replace(/\.$/, '')}${limits.length ? ` (${limits.join('; ')})` : ''}; ${seconds} s without narration\n"${name}": ${shape}`;
   });
   return `\`\`\`ts\n${shared}\n${scenes.join('\n\n')}\n\`\`\``;
