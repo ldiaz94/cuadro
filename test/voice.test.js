@@ -123,3 +123,16 @@ test('a cached line without levels gains them with no request', async () => {
   assert.equal(again.lines[0].levels.length, 36);
   await s.close();
 });
+
+test('a scene script speaks its say lines, and a bad one fails with its path', async () => {
+  const s = await fakeServer([{ body: half }]);
+  const { script, out } = await setup([]);
+  await writeFile(script, JSON.stringify({ scenes: [
+    { type: 'title', props: { title: 'Hi' }, say: 'Hello' }, { code: 'scenes/x.js' }, { type: 'endCard', props: { line: 'Bye' }, say: 'Bye' }] }));
+  const { lines } = await voice({ script, out, provider: 'openai', baseUrl: s.url });
+  assert.deepEqual(lines.map((l) => l.id), ['scene1', 'scene3']);
+  assert.deepEqual(s.requests.map((r) => JSON.parse(r.body).input), ['Hello', 'Bye']);
+  await writeFile(script, JSON.stringify({ scenes: [{ type: 'title', props: {} }] }));
+  await assert.rejects(voice({ script, out, provider: 'openai', baseUrl: s.url }), /scenes\[0\].props.title: missing/);
+  await s.close();
+});

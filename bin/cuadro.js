@@ -30,6 +30,7 @@ const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audi
   --out dir      where the audio files and voice.json go (default: voice)
   --base-url u   the provider's API address, to use another server
   --fps n        frames per second of the loudness levels in voice.json (default: 30)
+  The script is { "lines": [{ "id", "text" }] }, or a scene script whose say lines it speaks.
 
   make writes <out>/video.js and index.html, checked in Chromium:
   --provider p   anthropic, gemini or openai (or any compatible server)
