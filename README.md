@@ -138,7 +138,7 @@ add `?props={"theme":"bold"}` or `{"portrait":true}`.
 |---|---|
 | `title({ length, kicker, title, sub })` | A kicker, the headline word by word, then a sub line. |
 | `kinetic({ length, lines })` | Two to four short lines, one per beat, each arriving below the last, which dims; progress bars below. |
-| `stat({ length, title, stats })` | One to three `{ value, prefix, suffix, label }` numbers in rows, each counting up in its beat while the others dim. |
+| `stat({ length, title, stats })` | One to three `{ value, prefix, suffix, label }` numbers in rows, each counting up in its beat as a rule sweeps under it, while the others dim. |
 | `steps({ length, title, items })` | A list of `{ title, text }` with a highlight moving down it, the current step shown large beside it. |
 | `tiles({ length, title, items })` | Two to six `{ title, text }` tiles, with a highlight moving through them. |
 | `endCard({ length, logo, line, cta, url })` | A logo (an image URL) and a line, then a call to action and the URL from halfway, held to the last frame. |

@@ -6,7 +6,7 @@
 //
 //   title    kicker, headline word by word, a mark swept under *words*, sub
 //   kinetic  2-4 short lines, one per beat, each below the last, which dims
-//   stat     1-3 numbers in rows, each counting up in its beat, then dimmed
+//   stat     1-3 numbers in rows, each counting up in its beat as a rule sweeps under it
 //   steps    a list with a highlight moving down it, the current step large
 //   tiles    a grid with a highlight moving through it
 //   endCard  logo and a line, then a call to action and a URL, held to the end
@@ -138,13 +138,13 @@ export function stat({ length, title, stats }) {
   return scene(length, (t) => html`
     ${title && html`<h2 class="cq-display cq-head" style=${() => rise(t.enter(0))}>${title}</h2>`}
     <div class="cq-figures" style=${{ '--k': StatSizes[stats.length - 1] }}>${stats.map(({ value, prefix = '', suffix = '', label }, i) => {
-      const { from } = windows[i];
+      const { from, to } = windows[i];
       const decimals = (String(value).split('.')[1] ?? '').length;
       // display: contents, so the numbers share a column and the labels line up
       return html`<div class="cq-figure" style=${() => ({ '--a': active(t, windows, i) })}>
         <b class="cq-display" style=${() => rise(t.enter(2 + 4 * i))}>${prefix}${() => (value * t.between(from, from + 36)).toFixed(decimals)}${suffix}</b>
         <p style=${() => rise(t.enter(4 + 4 * i))}>${label}</p>
-        <i class="cq-rule"><i style=${() => ({ transform: `scaleX(${t.between(from + 6, from + 40)})` })}></i></i>
+        <i class="cq-rule"><i style=${() => ({ transform: `scaleX(${t.between(from + 6, to)})` })}></i></i>
       </div>`;
     })}</div>`, { className: 'cq-stat' });
 }
@@ -284,7 +284,6 @@ const Css = `
   color: color-mix(in srgb, var(--accent) calc(var(--a) * 100%), color-mix(in srgb, var(--ink) 30%, transparent));
   font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cq-rule { grid-column: 1 / -1; display: block; height: 0.5cqmin; margin: 2.4cqh 0; background: var(--line); }
-.cq-figure:last-child .cq-rule { display: none; }
 .cq-rule i { display: block; height: 100%; background: var(--accent2); transform-origin: left; }
 .cq-figure p { font-size: var(--t-3); line-height: 1.2; color: color-mix(in srgb, var(--ink) calc(var(--a) * 100%), var(--muted)); }
 
