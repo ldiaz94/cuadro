@@ -2,10 +2,15 @@
 
 /** One scene of a script: a designed scene with its props, or a code scene module; `say` is its narration line. */
 export type ScriptScene =
-  | { type: 'title' | 'kinetic' | 'stat' | 'steps' | 'tiles' | 'endCard'; props: Record<string, unknown>; say?: string }
+  | { type: 'title' | 'kinetic' | 'stat' | 'steps' | 'tiles' | 'app' | 'quote' | 'compare' | 'endCard'; props: Record<string, unknown>; say?: string }
   | { code: string; say?: string };
-/** A video as data: a theme, a brand, a soundtrack (a path relative to script.json) and the scenes in order. */
+/** A frame shape. */
+export type Format = '16:9' | '9:16';
+/** Each format's size in pixels: 1280x720 and 720x1280. */
+export const formats: Record<Format, { width: number; height: number }>;
+/** A video as data: a frame shape (default 16:9), a theme, a brand, a soundtrack (a path relative to script.json) and the scenes in order. */
 export interface Script {
+  format?: Format;
   theme?: 'light' | 'bold' | 'dark';
   brand?: { accent?: string; accent2?: string; logo?: string };
   music?: string;

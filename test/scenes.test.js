@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { beats, playLength, Fade } from '../src/scenes.js';
-import { theme } from '../src/theme.js';
+import { theme, themes } from '../src/theme.js';
+import { formats } from '../src/script.js';
 import { open } from './browser.js';
 
 test('beats tile the scene up to its fade-out, back to back, none too short', () => {
@@ -66,8 +67,8 @@ async function problems(page) {
   });
 }
 
-test('scenes: text of 28 px or more, inside the frame, filling 60% of its height and centred, in landscape and portrait', async () => {
-  for (const props of [{ theme: 'light' }, { theme: 'bold', portrait: true }]) {
+test('scenes: text of 28 px or more, inside the frame, filling 60% of its height and centred, in every format and theme', async () => {
+  for (const props of Object.keys(formats).flatMap((format) => Object.keys(themes).map((theme) => ({ format, theme })))) {
     const b = await open(`/demo/scenes.html?render&props=${encodeURIComponent(JSON.stringify(props))}`);
     try {
       await b.page.waitForFunction(() => window.cuadro);

@@ -5,8 +5,10 @@
 // the themes, and the code-scene contract (player.d.ts), and replies with
 // script.json plus a module for each `code` scene. A logo, brand colours
 // and music given to make are copied into the output folder and set over
-// every draft, so the model cannot drop them; so is a language, in which
-// the model writes the narration and the text on screen. cuadro checks the script
+// every draft, so the model cannot drop them; so are a language, in which
+// the model writes the narration and the text on screen, and a format (9:16
+// asks for a portrait video, and the prompt tells the model its stage's
+// size). cuadro checks the script
 // against its schema, writes it beside an index.html that runs the player
 // in the output folder, speaks its `say` lines if there is a voice
 // provider, and opens it in Chromium. A schema error, a page error, a
@@ -31,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { StepTimeout, launch, within } from './chromium.js';
 import { chat } from './llm.js';
 import { Fade } from './scenes.js';
-import { check as checkScript, timing, types } from './script.js';
+import { check as checkScript, formats, timing, types } from './script.js';
 import { serve } from './serve.js';
 import { theme, themes } from './theme.js';
 import { voice } from './voice.js';
@@ -39,14 +41,19 @@ import { voice } from './voice.js';
 /** Makes <out>/script.json, its code scenes and <out>/index.html from prompt; onStep(message) reports progress. */
 export async function make({
   prompt, provider, model, baseUrl, out = 'make-out', rounds = 3, root = process.cwd(),
-  voiceProvider, voice: voiceName, logo, brand, music, language, timeout = StepTimeout, onStep = () => {},
+  voiceProvider, voice: voiceName, logo, brand, music, language, format, timeout = StepTimeout, onStep = () => {},
 }) {
   if (!inside(root, out)) throw new Error(`cuadro: ${out} must be a folder inside ${resolve(root)}`);
   const libs = libraries(root);
   await mkdir(join(out, 'scenes'), { recursive: true });
-  const given = { ...(await assets(out, { logo, brand, music })), ...(language && { language: Intl.getCanonicalLocales(language)[0] }) };
+  if (format && !(format in formats)) throw new Error(`cuadro: no format ${format}; try ${Object.keys(formats).join(', ')}`);
+  const given = {
+    ...(await assets(out, { logo, brand, music })),
+    ...(language && { language: Intl.getCanonicalLocales(language)[0] }),
+    ...(format && { format }),
+  };
   await writeFile(join(out, 'index.html'), page(libs, Boolean(voiceProvider)));
-  const system = await context();
+  const system = await context(format ?? '16:9');
   const messages = [{ role: 'user', text: request(prompt, Boolean(voiceProvider), given) }];
   const ask = async () => {
     const text = await chat({ provider, model, baseUrl, system, messages });
@@ -116,6 +123,7 @@ function parse(json, given) {
       if (given.brand) script.brand = { ...script.brand, ...given.brand };
       if (given.music) script.music = given.music;
       if (given.language) script.language = given.language;
+      if (given.format) script.format = given.format;
     }
     return checkScript(script);
   } catch (e) {
@@ -233,15 +241,17 @@ function stills(script, narration) {
   });
 }
 
-/** The system prompt: the script format, the scene catalogue, the themes and the code-scene contract. */
-async function context() {
+/** The system prompt for a video of the given format: the script format, the scene catalogue, the themes and the code-scene contract. */
+async function context(format) {
+  const { width, height } = formats[format];
+  const portrait = height > width;
   const read = (file) => readFile(new URL(file, import.meta.url), 'utf8');
   const [scenesTypes, playerTypes, levelTypes, indexTypes] = await Promise.all(['./scenes.d.ts', './player.d.ts', './level.d.ts', './index.d.ts'].map(read));
   const sparkTypes = await readFile(new URL('./index.d.ts', import.meta.resolve('spark')), 'utf8');
   return `You make short explainer videos with cuadro by writing a scene script: JSON that lists designed
 scenes in order, each with its line of narration. cuadro checks the script, speaks the lines, makes
 each scene as long as its line, and plays the scenes one after another with cross-fades on a themed
-1280x720 stage.
+${width}x${height} stage (${format}${portrait ? ', portrait, for phones: the designed scenes stack what sits side by side' : ''}).
 
 # Your reply
 
@@ -250,10 +260,11 @@ its path (\`\`\`js scenes/orbit.js) and holds the whole module. Nothing else in 
 
 # The script
 
-{ "theme": "light", "brand": { "accent": "#rrggbb", "accent2": "#rrggbb", "logo": "logo.svg" },
+{ "format": "${format}", "theme": "light", "brand": { "accent": "#rrggbb", "accent2": "#rrggbb", "logo": "logo.svg" },
   "scenes": [ { "type": "title", "props": { ... }, "say": "..." },
               { "code": "scenes/name.js", "say": "..." } ] }
 
+- format: ${Object.keys(formats).join(' or ')}; keep "${format}".
 - theme: one of these (all scenes share it):
 ${Object.entries(themes).map(([name, t]) => `  - ${name}: background ${t['--bg']}, text ${t['--ink']}, accents ${t['--accent']} and ${t['--accent2']}, headings in ${t['--font-display'].split(',')[0]}`).join('\n')}
 - brand (optional): accent and accent2 replace the theme's accents; pick the brand's own colours
@@ -271,6 +282,11 @@ ${Object.entries(themes).map(([name, t]) => `  - ${name}: background ${t['--bg']
   short lines; a title only when there is no claim to make.
 - When the request or the facts hold a number (9x, 70%, 3 steps, $0), show it in a stat scene:
   "9x more likely" is { "value": 9, "suffix": "x", "label": "more likely to get hired" }.
+- Show the product with an app scene: a phone (or browser) whose rows are what the user sees, e.g.
+  chat bubbles (sent, received) for a conversation, items for a list, a profile card for a person;
+  give an image only if the request names a screenshot. Use a quote scene for a testimonial or a
+  striking line someone said, attributed by name, never invented. Use a compare scene for a
+  before/after or the old way against the new (left the old, right the better one).
 - Vary the layout: no type twice in a row, and no type more than twice in the video.
 - On screen go only key words, never the narration: headlines of a few words, item titles of one
   to three words, item texts of at most five. Mark one or two key words per headline with
@@ -284,7 +300,9 @@ ${Object.entries(themes).map(([name, t]) => `  - ${name}: background ${t['--bg']
   at least half the height, and its labels are var(--t-3) or larger. Plan it as three or four beats
   across its length (beats(length, n) from cuadro/scenes), each adding or changing something as the
   line says it (a headline that changes, a new element arriving, a highlight moving), so it tells a
-  small story. Make the narration visible: something that pulses or a waveform of bars driven by
+  small story.${portrait ? `
+- The frame is portrait: in a code scene, stack things top to bottom, use the full height, and keep
+  each label to a few words; it gets \`format\` ("${format}") to adapt.` : ''} Make the narration visible: something that pulses or a waveform of bars driven by
   level(levels, t.frame()).
 
 # Designed scenes

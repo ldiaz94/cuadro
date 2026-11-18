@@ -50,13 +50,16 @@ test('check: a good script passes, and each mistake names its path', () => {
   assert.throws(broken((s) => (s.scenes[1].props.items = {})), /^Error: scenes\[1\].props.items: expected an array$/);
   assert.throws(broken((s) => s.scenes[1].props.items.push(...Array(5).fill({ title: 'x' }))), /scenes\[1\].props.items: expected 2 to 6 items, not 7/);
   assert.throws(broken((s) => (s.scenes[1].props.items[1].title = ' ')), /^Error: scenes\[1\].props.items\[1\].title: expected a non-empty string$/);
-  assert.throws(broken((s) => (s.scenes[0].type = 'chart')), /^Error: scenes\[0\].type: expected one of title, kinetic, stat, steps, tiles, endCard, not "chart"$/);
+  assert.throws(broken((s) => (s.scenes[0].type = 'chart')), /^Error: scenes\[0\].type: expected one of title, kinetic, stat, steps, tiles, app, quote, compare, endCard, not "chart"$/);
   assert.throws(broken((s) => (s.scenes[0].props.length = 90)), /^Error: scenes\[0\].props.length: unknown key; expected kicker, title, sub$/);
   assert.throws(broken((s) => delete s.scenes[3].props.line), /^Error: scenes\[3\].props.line: missing$/);
   assert.throws(broken((s) => (s.scenes[2].code = '../evil.js')), /^Error: scenes\[2\].code: expected a module path like "scenes\/name.js"$/);
   assert.throws(broken((s) => (s.scenes[2].type = 'title')), /^Error: scenes\[2\].type: unknown key; expected code, say$/);
   assert.throws(broken((s) => (s.scenes[0].say = 3)), /^Error: scenes\[0\].say: expected a non-empty string$/);
   assert.throws(broken((s) => (s.music = 3)), /^Error: music: expected a non-empty string$/);
+  assert.throws(broken((s) => (s.format = '4:3')), /^Error: format: expected one of 16:9, 9:16, not "4:3"$/);
+  assert.throws(broken((s) => (s.scenes[0] = { type: 'app', props: { image: 'a.png', rows: [{ title: 'a' }, { title: 'b' }] } })),
+    /^Error: scenes\[0\].props: give image or rows, not both$/);
 });
 
 test('lines: one per say, with ids from the scene positions', () => {

@@ -18,10 +18,10 @@ const from: number = c.clips[0].from;
 void render({ page: 'demo/index.html', out: 'out.mp4', props: { title: 'x' }, workers: 2, onProgress: (done: number, total: number) => {} });
 void still({ page: 'demo/index.html', out: 'sheet.png', frames: [0, 30], columns: 2 });
 void still({ page: 'demo/index.html', out: 'sheet.png', every: 2 });
-void make({ prompt: 'a box', provider: 'anthropic', rounds: 2, logo: 'logo.svg', brand: { accent: '#4d65ff' }, music: 'music.wav', onStep: (m: string) => {} }).then(({ file }) => file.length);
+void make({ prompt: 'a box', provider: 'anthropic', rounds: 2, logo: 'logo.svg', brand: { accent: '#4d65ff' }, music: 'music.wav', format: '9:16', onStep: (m: string) => {} }).then(({ file }) => file.length);
 
 import { theme, themes } from 'cuadro/theme';
-import { stage, play, playLength, scene, beats, Fade, title, kinetic, stat, steps, tiles, endCard } from 'cuadro/scenes';
+import { stage, play, playLength, scene, beats, Fade, title, kinetic, stat, steps, tiles, app, quote, compare, endCard } from 'cuadro/scenes';
 const look = theme('bold', { accent: '#ff3366' });
 const bg: string = themes.dark['--bg'];
 const clips: [number, View][] = [
@@ -30,6 +30,10 @@ const clips: [number, View][] = [
   [90, stat({ length: 90, title: 'Numbers', stats: [{ value: 9, suffix: 'x', label: 'more' }] })],
   [90, steps({ length: 90, items: [{ title: 'a', text: 'b' }, { title: 'c' }] })],
   [90, tiles({ length: 90, title: 'T', items: [{ title: 'a' }, { title: 'b' }] })],
+  [90, app({ length: 90, title: 'See *it*', rows: [{ kind: 'sent', title: 'hi' }, { title: 'Ana', text: 'mentor' }] })],
+  [90, app({ length: 90, device: 'browser', image: 'shot.png' })],
+  [90, quote({ length: 90, quote: 'So *good*', name: 'Ana Ruiz', role: 'Mentor' })],
+  [90, compare({ length: 90, left: { label: 'Before', items: ['slow'] }, right: { label: 'After', items: ['fast'] } })],
   [90, endCard({ length: 90, logo: 'logo.svg', line: 'Bye', cta: 'Go', url: 'x.example' })],
   [60, scene(60, (t) => html`<b style=${() => ({ opacity: t.enter(beats(60, 2)[1].from) * t.between(0, Fade) })}>${t.frame}</b>`)],
 ];
@@ -39,13 +43,14 @@ import { level, word, type Word } from 'cuadro/level';
 import { captions, cues, CaptionBand } from 'cuadro/captions';
 import { translate } from 'cuadro/translate';
 import { voice } from 'cuadro/voice';
-import { check, lines, timing } from 'cuadro/script';
+import { check, lines, timing, formats } from 'cuadro/script';
 import { player, type CodeScene } from 'cuadro/player';
 const script = check({ scenes: [{ type: 'title', props: { title: 'Hi' }, say: 'Hi.' }, { code: 'scenes/x.js' }] });
 const spoken: string = lines(script).lines[0].text;
 const first: number = timing(script, { fps: 30, lines: [{ id: 'scene1', file: 'a.wav', seconds: 1 }] })[0].length;
-const twin = ({ length, levels }: CodeScene): View => scene(length, (t) => html`<i style=${() => ({ opacity: level(levels, t.frame()) })}></i>`);
-void player({ voice: null }).then((c) => c.durationInFrames + first + spoken.length + twin.length);
+const tall: number = formats['9:16'].height;
+const twin = ({ length, levels, format }: CodeScene): View => scene(length, (t) => html`<i class=${format} style=${() => ({ opacity: level(levels, t.frame()) })}></i>`);
+void player({ voice: null }).then((c) => c.durationInFrames + first + spoken.length + twin.length + tall);
 
 const said: Word[] = [{ text: 'Hi', start: 0, end: 0.3 }];
 const lit: number = word(said, 10, 30);
@@ -55,4 +60,4 @@ const talker = ({ length, words, fps }: CodeScene): View => scene(length, (t) =>
 void steps({ length: 90, items: [{ title: 'a' }, { title: 'b' }], words: said });
 void translate({ script: 'script.json', to: 'es', provider: 'gemini' }).then((file: string) => file.length + lit + talker.length);
 void voice({ script: 'script.json', provider: 'gemini' }).then(({ lines }) => lines[0].words[0].start + lines[0].wordsFrom.length);
-void check({ language: 'es', captions: true, font: 'noto.woff2', scenes: [] }).captions;
+void check({ format: '9:16', language: 'es', captions: true, font: 'noto.woff2', scenes: [] }).captions;

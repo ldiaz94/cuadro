@@ -1,11 +1,13 @@
-// cuadro's scenes demo: every scene once, cross-fading, in the theme
-// named by the `theme` prop (light, bold or dark), on a 1280x720 frame,
-// or 720x1280 with the prop `portrait`. Preview it at
-// /demo/scenes.html?props={"theme":"dark"}; render it with
+// cuadro's scenes demo: every scene once (the app scene twice, with rows
+// and with a screenshot), cross-fading, in the theme named by the `theme`
+// prop (light, bold or dark), on a frame of the `format` prop's shape
+// (16:9 or 9:16). Preview it at
+// /demo/scenes.html?props={"theme":"dark","format":"9:16"}; render it with
 // `npx cuadro render demo/scenes.html out/scenes.mp4 --props '{"theme":"bold"}'`.
 import { composition } from 'cuadro';
 import { theme } from 'cuadro/theme';
-import { stage, play, playLength, title, kinetic, stat, steps, tiles, endCard } from 'cuadro/scenes';
+import { stage, play, playLength, title, kinetic, stat, steps, tiles, app, quote, compare, endCard } from 'cuadro/scenes';
+import { formats } from 'cuadro/script';
 
 /** The scenes, as [length, view], for a made-up note-taking app. */
 const scenes = [
@@ -27,14 +29,23 @@ const scenes = [
     { title: 'Calendar', text: 'Meets meetings' },
     { title: 'Voice', text: 'Speak to write' },
     { title: 'Export', text: 'Plain Markdown' }] })],
+  [150, app({ length: 150, title: 'Ask your notes *anything*', rows: [
+    { kind: 'sent', title: 'What did we decide on pricing?' },
+    { kind: 'received', title: 'Two tiers, from May', text: 'Launch plan, 3 Apr' },
+    { kind: 'item', title: 'Launch plan', text: 'Edited by Ana' },
+    { kind: 'profile', title: 'Ana Ruiz', text: 'Owns pricing' }] })],
+  [120, app({ length: 120, device: 'browser', image: '/demo/screen.svg' })],
+  [150, quote({ length: 150, quote: 'We stopped asking *the same questions* in every meeting.', name: 'Maya Chen', role: 'Head of Product, Fieldnote' })],
+  [165, compare({ length: 165, title: 'A week of notes', left: { label: 'Before', items: ['Five apps', 'Lost decisions', 'Repeated questions'] },
+    right: { label: 'With Lumen', items: ['One place', 'Found in seconds', 'Answers on hand'] } })],
   [150, endCard({ length: 150, logo: '/doc/img/logo.svg', line: 'Never lose a *good idea* again', cta: 'Try Lumen free', url: 'lumen.example' })],
 ];
 
 /** The size is chosen before composition() reads the props, so it is read here. */
-const { portrait = false } = JSON.parse(new URLSearchParams(location.search).get('props') ?? '{}');
+const { format = '16:9' } = JSON.parse(new URLSearchParams(location.search).get('props') ?? '{}');
 
 composition({
-  width: portrait ? 720 : 1280, height: portrait ? 1280 : 720, fps: 30, durationInFrames: playLength(...scenes),
+  ...formats[format], fps: 30, durationInFrames: playLength(...scenes),
   props: { theme: 'light' },
   view: (frame, props) => stage(theme(props.theme), play(...scenes))(frame),
 });

@@ -273,7 +273,7 @@ test('make: a syntax error in a code scene names its file and line', async (t) =
   assert.match(lastText(s, 1), /scenes\/box\.js:2:\d+/);
 });
 
-test('make: the logo, brand colours, music and language are copied in and set over what the model writes', async (t) => {
+test('make: the logo, brand colours, music, language and format are copied in and set over what the model writes', async (t) => {
   process.env.ANTHROPIC_API_KEY = 'ka';
   const out = await folder(t);
   const music = join(out, 'tune.wav');
@@ -281,12 +281,17 @@ test('make: the logo, brand colours, music and language are copied in and set ov
   const own = JSON.stringify({ ...JSON.parse(script), brand: { accent: '#000000', logo: 'mine.png' }, music: 'other.mp3' }, null, 2);
   const s = await fakeServer([reply(own, { 'scenes/box.js': box }), said('OK')]);
   t.after(() => s.close());
-  const result = await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out, logo: 'test/dot.svg', brand: { accent: '#4d65ff', accent2: '#f7a072' }, music, language: 'pt-br' });
+  const result = await make({
+    prompt: 'x', provider: 'anthropic', baseUrl: s.url, out, logo: 'test/dot.svg', brand: { accent: '#4d65ff', accent2: '#f7a072' }, music,
+    language: 'pt-br', format: '9:16',
+  });
   const written = JSON.parse(await readFile(result.file, 'utf8'));
   assert.deepEqual(written.brand, { accent: '#4d65ff', logo: 'logo.svg', accent2: '#f7a072' });
   assert.equal(written.music, 'music.wav');
   assert.equal(written.language, 'pt-BR');
+  assert.equal(written.format, '9:16');
   assert.match(lastText(s, 0), /all the text on screen in Brazilian Portuguese \(pt-BR\)/);
+  assert.match(s.requests[0].body, /720x1280 stage \(9:16, portrait/);
   assert.deepEqual(await readFile(join(out, 'logo.svg')), await readFile('test/dot.svg'));
   assert.deepEqual(await readFile(join(out, 'music.wav')), await readFile(music));
   assert.match(lastText(s, 0), /cuadro sets these fields itself, so keep them: .*"music":"music.wav".*The endCard shows the logo/);
