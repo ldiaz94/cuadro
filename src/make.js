@@ -163,13 +163,17 @@ function codeBlocks(reply) {
 const ScenePath = /scenes\/[A-Za-z0-9_-]+\.js/;
 const FirstLinePath = /^\s*\/\/\s*(scenes\/[A-Za-z0-9_-]+\.js)/;
 
-/** The frames to review: one per scene, three quarters in, when its beats have mostly arrived. */
+/** Where to take the review's stills in a designed scene (when its beats have mostly arrived) and in a code scene (to show it change), as parts of its length. */
+const DesignedStills = [0.75];
+const CodeStills = [0.25, 0.55, 0.85];
+
+/** The frames to review, by scene. */
 function stills(script, narration) {
   let from = 0;
-  return timing(script, narration, narration?.fps ?? 30).map(({ length }) => {
-    const frame = from + Math.round(0.75 * length);
+  return timing(script, narration, narration?.fps ?? 30).flatMap(({ length }, i) => {
+    const frames = (script.scenes[i].code ? CodeStills : DesignedStills).map((q) => from + Math.round(q * length));
     from += length - Fade;
-    return frame;
+    return frames;
   });
 }
 
@@ -214,6 +218,12 @@ ${Object.entries(themes).map(([name, t]) => `  - ${name}: background ${t['--bg']
   an idea needs something visual the designed scenes cannot show: a transformation, a flow between
   things, a metaphor drawn with shapes. Make it the video's memorable moment: a full composition
   that keeps moving for its whole length and follows its narration line, not a slide of text.
+- A code scene fills the frame as the designed ones do: its main visual spans most of the width and
+  at least half the height, and its labels are var(--t-3) or larger. Plan it as three or four beats
+  across its length (beats(length, n) from cuadro/scenes), each adding or changing something as the
+  line says it (a headline that changes, a new element arriving, a highlight moving), so it tells a
+  small story. Make the narration visible: something that pulses or a waveform of bars driven by
+  level(levels, t.frame()).
 
 # Designed scenes
 
@@ -279,9 +289,9 @@ function fix(problem) {
   return `The script failed cuadro's check:\n\n${problem}\n\nReply with the whole fixed script.json in one \`\`\`json block, and any code scene you change.`;
 }
 
-/** The user message after a passed check, sent with one still per scene. */
+/** The user message after a passed check, sent with the stills. */
 function review(frames) {
-  return `It runs. These are stills, one per scene, at frames ${frames.join(', ')}.
+  return `It runs. These are stills at frames ${frames.join(', ')}: one per designed scene, three per code scene.
 Look for text that is cut off, overlaps or is too small, empty or unbalanced frames, and code scenes
 that don't show their idea clearly. If the video matches the request and looks finished, reply with
 just OK. Otherwise reply with the whole corrected script.json in one \`\`\`json block, and any code

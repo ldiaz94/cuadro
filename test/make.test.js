@@ -158,7 +158,7 @@ test('make: a schema error, a broken code scene, then a working script, then OK'
   assert.match(lastText(s, 1), /scenes\[0\].props.items: expected an array/);
   assert.match(lastText(s, 2), /boom at load/);
   const images = JSON.parse(s.requests[3].body).messages.at(-1).content.filter((c) => c.type === 'image');
-  assert.equal(images.length, 3, 'one still per scene');
+  assert.equal(images.length, 5, 'one still per designed scene, three for the code scene');
   assert.equal(await readFile(result.file, 'utf8'), script + '\n');
   assert.equal(await readFile(join(out, 'scenes', 'box.js'), 'utf8'), box);
   const index = await readFile(result.page, 'utf8');
@@ -259,7 +259,7 @@ test('make: narration speaks the say lines, and the stills follow their lengths'
   assert.deepEqual(speech.requests.map((r) => JSON.parse(r.body).input), ['A box.', 'It moves.', 'Bye.']);
   const { lines } = JSON.parse(await readFile(join(out, 'voice', 'voice.json'), 'utf8'));
   assert.deepEqual(lines.map((l) => l.id), ['scene1', 'scene2', 'scene3']);
-  // 45 frames a line: lengths 65, 65 and 90; stills three quarters into each
-  assert.match(lastText(s, 1), /at frames 49, 102, 174\./);
+  // 45 frames a line: lengths 65, 65 and 90; stills 3/4 into the designed scenes, three in the code scene
+  assert.match(lastText(s, 1), /at frames 49, 69, 89, 108, 174:/);
   assert.match(await readFile(join(out, 'index.html'), 'utf8'), /await player\(\);/);
 });
