@@ -1,10 +1,11 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { openaiKey } from '../src/http.js';
 import { speak } from '../src/speech.js';
 import { fakeServer } from './fake-server.js';
 
 beforeEach(() => {
-  for (const k of ['ELEVENLABS_API_KEY', 'GEMINI_API_KEY', 'OPENAI_API_KEY', 'DASHSCOPE_API_KEY']) delete process.env[k];
+  for (const k of ['ELEVENLABS_API_KEY', 'GEMINI_API_KEY', 'OPENAI_API_KEY', 'OPENAI_COMPAT_API_KEY', 'OPENAI_BASE_URL', 'DASHSCOPE_API_KEY']) delete process.env[k];
 });
 
 /** Runs speak against a fake server that sends reply; returns the result and the one request. */
@@ -28,16 +29,17 @@ test('elevenlabs', async () => {
   assert.deepEqual([out.bytes.toString(), out.ext], ['MP3', 'mp3']);
 });
 
-test('openai, with and without a key', async () => {
-  process.env.OPENAI_API_KEY = 'k2';
+test('openai: OPENAI_API_KEY only for OpenAI, OPENAI_COMPAT_API_KEY for any other host', async () => {
+  process.env.OPENAI_API_KEY = 'k-openai';
   let r = await run({ body: 'MP3' }, { provider: 'openai', model: 'tts-1' });
   assert.equal(r.req.url, '/audio/speech');
-  assert.equal(r.req.headers.authorization, 'Bearer k2');
+  assert.equal(r.req.headers.authorization, undefined, 'OpenAI\'s key must not go to another host');
   assert.deepEqual(r.body, { model: 'tts-1', input: 'Hello', voice: 'alloy', response_format: 'mp3' });
-  delete process.env.OPENAI_API_KEY;
-  r = await run({ body: 'MP3' }, { provider: 'openai' });
-  assert.equal(r.req.headers.authorization, undefined);
   assert.equal(r.out.ext, 'mp3');
+  process.env.OPENAI_COMPAT_API_KEY = 'k-compat';
+  r = await run({ body: 'MP3' }, { provider: 'openai' });
+  assert.equal(r.req.headers.authorization, 'Bearer k-compat');
+  assert.equal(openaiKey('https://api.openai.com/v1'), 'k-openai');
 });
 
 test('gemini wraps PCM as a WAV file', async () => {
@@ -60,15 +62,16 @@ test('gemini wraps PCM as a WAV file', async () => {
   assert.deepEqual(w.subarray(44), pcm);
 });
 
-test('qwen downloads the audio from the returned url', async () => {
+test('qwen downloads the audio from the returned url, retrying a failure', async () => {
   process.env.DASHSCOPE_API_KEY = 'k4';
-  const file = await fakeServer([{ body: 'WAVDATA' }]);
+  const file = await fakeServer([{ status: 503 }, { body: 'WAVDATA' }]);
   const reply = { body: JSON.stringify({ output: { audio: { url: `${file.url}/a.wav` } } }) };
   const { out, req, body } = await run(reply, { provider: 'qwen' });
   assert.equal(req.url, '/services/aigc/multimodal-generation/generation');
   assert.equal(req.headers.authorization, 'Bearer k4');
   assert.deepEqual(body, { model: 'qwen3-tts-flash', input: { text: 'Hello', voice: 'Cherry' } });
   assert.deepEqual([out.bytes.toString(), out.ext], ['WAVDATA', 'wav']);
+  assert.deepEqual(file.requests.map((r) => r.method), ['GET', 'GET']);
   await file.close();
 });
 

@@ -37,8 +37,9 @@ const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audi
   --base-url u   the provider's API address, to use another server
   --voice-provider p, --voice v   narrate it, with a voice provider above
 
-  API keys come from ELEVENLABS_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY
-  (OPENAI_BASE_URL for other servers), DASHSCOPE_API_KEY and ANTHROPIC_API_KEY.`;
+  API keys come from ELEVENLABS_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY,
+  DASHSCOPE_API_KEY and ANTHROPIC_API_KEY. OPENAI_BASE_URL points openai at
+  another server, which gets OPENAI_COMPAT_API_KEY instead of OPENAI_API_KEY.`;
 
 let args;
 try {

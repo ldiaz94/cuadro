@@ -2,9 +2,9 @@
 // voice.json listing them with their lengths.
 // The script is { "lines": [{ "id", "text" }] }. Line <id> becomes
 // <out>/<id>.<ext>, and <out>/voice.json is { lines: [{ id, file, seconds,
-// hash }] }, where hash covers the provider, voice, model and text. A line
-// whose hash and file are unchanged is not spoken again, so editing one
-// line costs one request.
+// hash }] }, where hash covers the provider, its API address, the voice,
+// the model and the text. A line whose hash and file are unchanged is not
+// spoken again, so editing one line costs one request.
 // Depends on speech.js and ffprobe (from ffmpeg) on the PATH. Leaves out
 // deleting the files of lines removed from the script.
 import { execFile } from 'node:child_process';
@@ -13,7 +13,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { defaults, speak } from './speech.js';
+import { address, defaults, speak } from './speech.js';
 
 /** Speaks every line of the script into out; onLine({ id, index, total, skipped }) after each. */
 export async function voice({ script, out = 'voice', provider, voice: voiceName, model, baseUrl, onLine = () => {} }) {
@@ -23,7 +23,7 @@ export async function voice({ script, out = 'voice', provider, voice: voiceName,
   const previous = new Map((await readManifest(out)).map((l) => [l.id, l]));
   const manifest = [];
   for (const [index, { id, text }] of lines.entries()) {
-    const hash = createHash('sha256').update([provider, chosen.voice, chosen.model, text].join('\0')).digest('hex');
+    const hash = createHash('sha256').update([provider, address(provider, baseUrl), chosen.voice, chosen.model, text].join('\0')).digest('hex');
     const old = previous.get(id);
     const skipped = old?.hash === hash && existsSync(join(out, old.file));
     if (skipped) {

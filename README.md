@@ -119,7 +119,7 @@ ELEVENLABS_API_KEY=... npx cuadro voice script.json --provider elevenlabs --voic
 
 This writes `voice/<id>.<ext>` for each line and `voice/voice.json`, a
 list of `{ id, file, seconds, hash }` (lengths come from ffprobe). A line is
-spoken again only when its text, provider, voice or model changes, so
+spoken again only when its text, provider, API address, voice or model changes, so
 editing one line costs one request. Options: `--provider` (required),
 `--voice`, `--model`, `--out` (default `voice`) and `--base-url`. Progress
 goes to stderr. From Node, `voice({ script, out, provider, voice, model,
@@ -129,11 +129,13 @@ baseUrl, onLine })` in `cuadro/voice` does the same.
 |---|---|---|---|
 | `elevenlabs` | `ELEVENLABS_API_KEY` | `eleven_multilingual_v2` | `JBFqnCBsd6RMkjVDRZzb` |
 | `gemini` | `GEMINI_API_KEY` | `gemini-3.8-flash-tts` | `Kore` |
-| `openai` | `OPENAI_API_KEY` (optional for local servers); `OPENAI_BASE_URL` (default `https://api.openai.com/v1`) | `gpt-4o-mini-tts` | `alloy` |
+| `openai` | `OPENAI_API_KEY`; for another server, `OPENAI_BASE_URL` and `OPENAI_COMPAT_API_KEY` (optional) | `gpt-4o-mini-tts` | `alloy` |
 | `qwen` | `DASHSCOPE_API_KEY` | `qwen3-tts-flash` | `Cherry` |
 
 `openai` also talks to any compatible server (Kokoro, Piper and others):
-set `OPENAI_BASE_URL` and pick that server's model and voice. Qwen's speech
+set `OPENAI_BASE_URL` (or `--base-url`) and pick that server's model and
+voice. A server that is not `api.openai.com` gets `OPENAI_COMPAT_API_KEY`,
+if set, and never `OPENAI_API_KEY`, so OpenAI's key stays with OpenAI. Qwen's speech
 API is not OpenAI-compatible, hence its own adapter.
 
 The page imports the list and sets each scene's length from it:
@@ -171,7 +173,7 @@ preview and render the result.
 |---|---|---|
 | `anthropic` | `ANTHROPIC_API_KEY` | `claude-opus-5-5` |
 | `gemini` | `GEMINI_API_KEY` | `gemini-4-hydrogen` |
-| `openai` | `OPENAI_API_KEY` (optional for local servers); `OPENAI_BASE_URL` (default `https://api.openai.com/v1`) | `gpt-6.2-astra` |
+| `openai` | `OPENAI_API_KEY`; for another server, `OPENAI_BASE_URL` and `OPENAI_COMPAT_API_KEY` (optional) | `gpt-6.2-astra` |
 
 `--model` picks another model. With `--voice-provider p` (and
 `--voice v`), the model first writes a narration script, `cuadro voice`

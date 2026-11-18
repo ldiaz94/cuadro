@@ -9,7 +9,7 @@
 // Providers: anthropic, gemini, openai (also any OpenAI-compatible server).
 // Depends on http.js. Leaves out streaming, tools, caching and every other
 // kind of attachment.
-import { post } from './http.js';
+import { OpenAIUrl, need, openaiKey, post } from './http.js';
 
 /** Asks the named provider for a reply to messages; model defaults per provider. */
 export async function chat({ provider, model, system, messages, baseUrl }) {
@@ -33,6 +33,9 @@ const MaxTokens = 16000;
 /** How long to wait for one reply, in milliseconds: a model that thinks is slow. */
 const Timeout = 600000;
 
+/** Retries of a failed request: one, as a request that timed out may still have been billed. */
+const Retries = 1;
+
 // Anthropic Messages API, with server-side fallback to another model when
 // the chosen one is overloaded. Sampling parameters and `thinking` are left
 // out: this API version rejects the first, and the model thinks by itself.
@@ -43,6 +46,7 @@ async function anthropic({ model, system, messages, baseUrl = 'https://api.anthr
   const res = await post(`${baseUrl}/v1/messages`, {
     provider: 'anthropic',
     timeout: Timeout,
+    retries: Retries,
     headers: {
       'x-api-key': key,
       'anthropic-version': '2026-10-21',
@@ -78,6 +82,7 @@ async function gemini({ model, system, messages, baseUrl = 'https://generativela
   const res = await post(`${baseUrl}/interactions`, {
     provider: 'gemini',
     timeout: Timeout,
+    retries: Retries,
     headers: { 'x-goog-api-key': key, 'api-revision': '2026-05-20', 'content-type': 'application/json' },
     body: JSON.stringify({
       model,
@@ -94,13 +99,13 @@ async function gemini({ model, system, messages, baseUrl = 'https://generativela
 
 // OpenAI Chat Completions; OPENAI_BASE_URL (default
 // https://api.openai.com/v1) points it at any compatible server, which may
-// need no key. The instructions go as a `system` message, which OpenAI
+// need no key, and gets OPENAI_COMPAT_API_KEY instead of OPENAI_API_KEY. The instructions go as a `system` message, which OpenAI
 // still accepts and compatible servers understand (newer OpenAI docs call
 // it `developer`). Images go as base64 data URLs.
 // https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create
 // https://developers.openai.com/api/docs/guides/images-vision
-async function openai({ model, system, messages, baseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1' }) {
-  const key = process.env.OPENAI_API_KEY;
+async function openai({ model, system, messages, baseUrl = process.env.OPENAI_BASE_URL || OpenAIUrl }) {
+  const key = openaiKey(baseUrl);
   const image = (png) => ({ type: 'image_url', image_url: { url: `data:image/png;base64,${png.toString('base64')}` } });
   const message = ({ role, text, images = [] }) => images.length
     ? { role, content: [...images.map(image), { type: 'text', text }] }
@@ -108,6 +113,7 @@ async function openai({ model, system, messages, baseUrl = process.env.OPENAI_BA
   const res = await post(`${baseUrl}/chat/completions`, {
     provider: 'openai',
     timeout: Timeout,
+    retries: Retries,
     headers: { 'content-type': 'application/json', ...(key && { authorization: `Bearer ${key}` }) },
     body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, ...messages.map(message)] }),
   });
@@ -122,11 +128,4 @@ function reply(provider, parts) {
   const text = parts.join('');
   if (!text.trim()) throw new Error(`${provider}: the reply holds no text`);
   return text;
-}
-
-/** The value of the environment variable name, or an error saying to set it. */
-function need(name) {
-  const value = process.env[name];
-  if (!value) throw new Error(`cuadro: set ${name} to use this provider`);
-  return value;
 }

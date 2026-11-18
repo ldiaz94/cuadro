@@ -54,6 +54,17 @@ test('a change of voice regenerates every line', async () => {
   await s.close();
 });
 
+test('another API address regenerates every line', async () => {
+  const one = await fakeServer([{ body: half }]);
+  const two = await fakeServer([{ body: half }]);
+  const { script, out } = await setup([{ id: 'a', text: 'One' }]);
+  await voice({ script, out, provider: 'openai', baseUrl: one.url });
+  await voice({ script, out, provider: 'openai', baseUrl: two.url });
+  assert.equal(two.requests.length, 1);
+  await one.close();
+  await two.close();
+});
+
 test('bad scripts are rejected before any request', async () => {
   for (const [lines, message] of [
     [[{ id: 'a/b', text: 'x' }], /must be letters/],

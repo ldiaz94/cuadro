@@ -8,7 +8,7 @@ import { wav } from '../src/speech.js';
 import { fakeServer } from './fake-server.js';
 
 beforeEach(() => {
-  for (const k of ['ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL']) delete process.env[k];
+  for (const k of ['ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'OPENAI_API_KEY', 'OPENAI_COMPAT_API_KEY', 'OPENAI_BASE_URL']) delete process.env[k];
 });
 
 /** A one-pixel PNG's worth of bytes; the adapters only base64 it. */
@@ -84,7 +84,8 @@ test('gemini: stateless steps, inline image, last model output', async () => {
 });
 
 test('openai: system message, data URL image, refusal', async () => {
-  process.env.OPENAI_API_KEY = 'ko';
+  process.env.OPENAI_API_KEY = 'k-openai'; // OpenAI's own key never goes to another host
+  process.env.OPENAI_COMPAT_API_KEY = 'ko';
   const reply = (message, finish_reason = 'stop') => ({ body: JSON.stringify({ choices: [{ message, finish_reason }] }) });
   const { out, req, body } = await run(reply({ content: 'yo', refusal: null }), { provider: 'openai', model: 'local' });
   assert.equal(out, 'yo');
