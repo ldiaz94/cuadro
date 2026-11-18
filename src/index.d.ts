@@ -28,3 +28,11 @@ export const ease: Easing;
 export const easeIn: Easing;
 export const easeOut: Easing;
 export const easeInOut: Easing;
+
+import type { Getter, Child } from 'spark';
+/** Content placed in time: a function of a frame getter. */
+export type View = (frame: Getter<number>) => Child;
+/** Shows view from frame `from` for `duration` frames, counting its frames from 0. */
+export function sequence(from: number, duration: number, view: View): View;
+/** Plays [duration, view] clips back to back. */
+export function series(...clips: [duration: number, view: View][]): View;
