@@ -98,7 +98,7 @@ npx cuadro render video.html out.mp4 --props '{"color":"teal"}' --audio song.mp3
 
 ### Scenes and themes
 
-`cuadro/scenes` has six designed scenes for an explainer video, and
+`cuadro/scenes` has nine designed scenes for an explainer video, and
 `cuadro/theme` the look they share. They live in their own modules, so
 their names (`title`, `steps`...) never clash with a video's own; map
 them in the import map too:
@@ -133,7 +133,7 @@ sweeps under a word. Give the screen key words, not the narration. In
 any text, `*words*` are marked in the accent colour and `\n` breaks the
 line. Scenes fill any frame size, and a portrait frame stacks what sits
 side by side. [`demo/scenes.html`](demo/scenes.html) shows them all;
-add `?props={"theme":"bold"}` or `{"portrait":true}`.
+add `?props={"theme":"bold"}` or `{"format":"9:16"}`.
 
 | `cuadro/scenes` | |
 |---|---|
@@ -142,6 +142,9 @@ add `?props={"theme":"bold"}` or `{"portrait":true}`.
 | `stat({ length, title, stats })` | One to three `{ value, prefix, suffix, label }` numbers in rows, each counting up in its beat as a rule sweeps under it, while the others dim. |
 | `steps({ length, title, items })` | A list of `{ title, text }` with a highlight moving down it, the current step shown large beside it. |
 | `tiles({ length, title, items })` | Two to six `{ title, text }` tiles, with a highlight moving through them. |
+| `app({ length, title, device, image, rows })` | A phone (or `device: 'browser'`) showing a screenshot, `image`, panned top to bottom, or two to four `{ kind, title, text }` rows arriving one per beat: list items and profile cards (with initials) or chat bubbles (`kind: 'sent'` or `'received'`). The camera eases in and turns toward you the whole time; the headline sits beside it, or above in portrait. |
+| `quote({ length, quote, name, role, image })` | A big quote word by word, then who said it: name, role, and an avatar image or their initials, ringed by a sweep to the end. |
+| `compare({ length, title, left, right })` | Two `{ label, items }` sides (one to four items each): the first, then the second revealed by a wipe, then the second picked as it lifts and the first dims. Stacked in portrait. |
 | `endCard({ length, logo, line, cta, url })` | A logo (an image URL) and a line, then a call to action and the URL from halfway, held to the last frame. |
 | `stage(theme, view)` | The themed frame, with a slowly drifting glow, and `view` on top. |
 | `play([length, view], ...)` | Scenes in order, each cross-fading into the next over `Fade` (12) frames. `playLength(...)` is its length. |
@@ -230,13 +233,13 @@ which cuadro waits for.
 
 ### Scripts
 
-A script is a video written as data: a theme, a brand, optional music,
+A script is a video written as data: a frame shape, a theme, a brand, optional music,
 and the scenes in order, each with the line the narrator says over it. A scene is one of
 the designed scenes above, with its props (no `length`: cuadro works it
 out), or a code scene, a module of your own:
 
 ```json
-{ "theme": "dark",
+{ "format": "16:9", "theme": "dark",
   "brand": { "accent": "#ff7a59", "logo": "logo.svg" },
   "music": "music.wav",
   "scenes": [
@@ -271,16 +274,25 @@ and the render cuts or pads it to the video's length. Paths in the script are
 relative to `script.json`. Render it like any page:
 `npx cuadro render index.html out.mp4`.
 
+`format` is `"16:9"` (the default, 1280×720) or `"9:16"` (720×1280, for
+phones). The page's props override it, so one script renders in both
+shapes: `npx cuadro render index.html tall.mp4 --props
+'{"format":"9:16"}'` (and the same for `still`, or `?props=` in the
+preview). A flag of its own would only be a second spelling of that.
+Portrait is 720 wide rather than 1080 because every size is in container
+units: 720×1280 has the same pixels as 1280×720, so it renders as fast,
+and the smallest text is still 28.8 px.
+
 A code scene's module exports a function that takes `{ length, levels,
-say, fps }` and returns a view, usually built with `scene()`. `levels`
+say, fps, format }` and returns a view, usually built with `scene()`. `levels`
 is its line's loudness from voice.json, one number per frame, for
 `level()`. [`demo/script`](demo/script) is a whole script with one code
 scene, [`scenes/wave.js`](demo/script/scenes/wave.js).
 
 `check(script)` in `cuadro/script` checks a script and names the bad
 path in its error: `scenes[2].props.items: expected an array`.
-`player({ script, voice, width, height })` takes other paths, or `voice:
-null` for none.
+`player({ script, voice })` takes other paths, or `voice: null` for
+none; the stage's size comes from the format.
 
 ### Make a video from a prompt
 
@@ -294,7 +306,8 @@ The model gets the script format, the scene catalogue (each scene's doc
 comment and props from `scenes.d.ts`, its limits from the checker), the
 themes, and the code-scene contract, and replies with `script.json` and
 a module for each code scene. It is told to open with a hook, to put any
-number in a stat scene, to vary the layouts, to show key words rather
+number in a stat scene, to show the product in an app scene, a
+testimonial in a quote and a before/after in a compare, to vary the layouts, to show key words rather
 than the narration, and to write code only for what the designed scenes
 cannot show. cuadro checks the
 script, writes it with an `index.html` into `--out` (default
@@ -317,6 +330,8 @@ with status 3.
 the brand: the files are copied into the output folder as `logo.<ext>`
 and `music.<ext>`, and cuadro sets `brand` and `music` over every draft,
 so the model cannot drop them. The end card shows the logo.
+`--format 9:16` asks for a portrait video: the script gets that format,
+and the model is told its stage is 720×1280.
 
 The model's code runs on your machine, so the check keeps it in a small
 box: cuadro's server hands the page only the output folder, cuadro and
@@ -333,7 +348,7 @@ spark, and the tab may not load anything from another origin.
 lines into `<out>/voice` on every round (unchanged lines are not spoken
 again), so the scenes follow the lines' lengths. From Node, `make({
 prompt, provider, model, baseUrl, out, rounds, root, voiceProvider,
-voice, logo, brand: { accent, accent2 }, music, timeout, onStep })` in `cuadro/make` does the same, and resolves
+voice, logo, brand: { accent, accent2 }, music, format, timeout, onStep })` in `cuadro/make` does the same, and resolves
 to `{ page, file, reviewed }`, `file` being `script.json`.
 
 The result is a script: read it, edit it and commit it like any other.
@@ -492,8 +507,8 @@ others run in Chromium and ffmpeg against
 - scenes: beats tile each scene up to its fade-out, none under 15
   frames, and a too-short scene is refused; `playLength` counts the
   overlaps; a brand accent gets readable text on it, and bad theme names
-  and colours fail. Every tenth frame of the demo, in landscape and
-  portrait, has no text under 28 px, nothing outside the frame, nothing
+  and colours fail. Every tenth frame of the demo, in each format and
+  theme, has no text under 28 px, nothing outside the frame, nothing
   clipped, and content spanning at least 60% of the height, centred
   within 10%.
 
@@ -518,16 +533,16 @@ Lines of code, not counting blank lines or comments:
 | `src/speech.js` | 84 |
 | `src/voice.js` | 75 |
 | `src/llm.js` | 88 |
-| `src/make.js` | 330 |
+| `src/make.js` | 342 |
 | `src/theme.js` | 55 |
-| `src/scenes.js` | 249 |
-| `src/script.js` | 89 |
-| `src/player.js` | 44 |
+| `src/scenes.js` | 374 |
+| `src/script.js` | 101 |
+| `src/player.js` | 51 |
 | `src/index.js` | 5 |
-| `bin/cuadro.js` | 130 |
-| **total** | **1549** |
+| `bin/cuadro.js` | 131 |
+| **total** | **1706** |
 
-`scenes.js` counts its stylesheet, about 85 lines of CSS. `make.js` counts its prompt, about 100 lines of text.
+`scenes.js` counts its stylesheet, about 150 lines of CSS. `make.js` counts its prompt, about 110 lines of text.
 
 The only dependencies are spark and playwright-core, plus ffmpeg from
 the system. Inter and Space Grotesk (Latin, 70 KB of woff2) ship in
@@ -542,7 +557,9 @@ the system. Inter and Space Grotesk (Latin, 70 KB of woff2) ship in
 - Frame-exact embedded video clips, captions, and transparent video.
 - An embeddable React player. The preview is the page itself.
 - In scenes: transitions other than cross-fades, icons, images other
-  than the end card's logo, scene types no video has needed yet, and
+  than the end card's logo, the app's screenshot and the quote's avatar,
+  a square (1:1) format (the existing scenes overflow a square frame
+  and would need their own layouts), scene types no video has needed yet, and
   letters outside the fonts' Latin subset. A theme has no easing (motion
   is worked out in JS from the frame; CSS never animates) and no logo
   (cuadro waits for an `<img>`, not a CSS image, so the logo is a prop

@@ -21,7 +21,7 @@ const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audi
                    [--fps n]
        cuadro make "<prompt>" --provider p [--model m] [--out dir] [--rounds n] [--base-url url]
                    [--voice-provider p [--voice v]] [--logo file] [--brand "#hex[,#hex]"]
-                   [--music file]
+                   [--music file] [--format 16:9|9:16]
 
   --props json   props merged over the composition's defaults
   --audio file   soundtrack, cut or padded to the video's length
@@ -50,7 +50,8 @@ const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audi
   --logo file    the brand's logo, shown on the end card
   --brand list   the brand's accent colours, "#rrggbb" or "#rrggbb,#rrggbb"
   --music file   music under the narration, cut or padded to the video's length
-  The logo, colours and music are set in the script whatever the model writes.
+  --format f     16:9 (default) or 9:16, a portrait video
+  The logo, colours, music and format are set in the script whatever the model writes.
   It exits 3 when the script passed the check but the model did not approve it.
 
   API keys come from ELEVENLABS_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY,
@@ -66,7 +67,7 @@ try {
       provider: { type: 'string' }, voice: { type: 'string' }, model: { type: 'string' },
       out: { type: 'string' }, 'base-url': { type: 'string' },
       rounds: { type: 'string' }, fps: { type: 'string' }, 'voice-provider': { type: 'string' },
-      logo: { type: 'string' }, brand: { type: 'string' }, music: { type: 'string' },
+      logo: { type: 'string' }, format: { type: 'string' }, brand: { type: 'string' }, music: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -166,7 +167,7 @@ async function runMake() {
   try {
     const { page, reviewed } = await make({
       prompt: positionals[1], provider: values.provider, model: values.model, baseUrl: values['base-url'], out: values.out, rounds,
-      voiceProvider: values['voice-provider'], voice: values.voice, logo: values.logo, music: values.music,
+      voiceProvider: values['voice-provider'], voice: values.voice, logo: values.logo, music: values.music, format: values.format,
       brand: values.brand && { accent, ...(accent2 && { accent2 }) }, onStep: (m) => console.error(m),
     });
     console.error(`preview: serve this folder with byte ranges (npx serve .) and open /${relative('.', page)}`);
