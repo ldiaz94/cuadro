@@ -3,7 +3,9 @@
 // The model gets the script format, the catalogue of designed scenes (their
 // doc comments and props from scenes.d.ts, their limits from script.js),
 // the themes, and the code-scene contract (player.d.ts), and replies with
-// script.json plus a module for each `code` scene. cuadro checks the script
+// script.json plus a module for each `code` scene. A logo, brand colours
+// and music given to make are copied into the output folder and set over
+// every draft, so the model cannot drop them. cuadro checks the script
 // against its schema, writes it beside an index.html that runs the player
 // in the output folder, speaks its `say` lines if there is a voice
 // provider, and opens it in Chromium. A schema error, a page error, a
@@ -20,8 +22,8 @@
 // out rendering the mp4 (that is `cuadro render`), editing an existing
 // script, writing a whole page instead of a script, and any check of how
 // good the video looks beyond the review.
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { StepTimeout, launch, within } from './chromium.js';
 import { chat } from './llm.js';
@@ -34,14 +36,15 @@ import { voice } from './voice.js';
 /** Makes <out>/script.json, its code scenes and <out>/index.html from prompt; onStep(message) reports progress. */
 export async function make({
   prompt, provider, model, baseUrl, out = 'make-out', rounds = 3, root = process.cwd(),
-  voiceProvider, voice: voiceName, timeout = StepTimeout, onStep = () => {},
+  voiceProvider, voice: voiceName, logo, brand, music, timeout = StepTimeout, onStep = () => {},
 }) {
   if (!inside(root, out)) throw new Error(`cuadro: ${out} must be a folder inside ${resolve(root)}`);
   const libs = libraries(root);
   await mkdir(join(out, 'scenes'), { recursive: true });
+  const given = await assets(out, { logo, brand, music });
   await writeFile(join(out, 'index.html'), page(libs, Boolean(voiceProvider)));
   const system = await context();
-  const messages = [{ role: 'user', text: request(prompt, Boolean(voiceProvider)) }];
+  const messages = [{ role: 'user', text: request(prompt, Boolean(voiceProvider), given) }];
   const ask = async () => {
     const text = await chat({ provider, model, baseUrl, system, messages });
     messages.push({ role: 'assistant', text });
@@ -62,8 +65,9 @@ export async function make({
   };
   /** Checks a draft against the schema, saves it, and shoots its stills in Chromium. */
   const attempt = async (draft) => {
-    const script = parse(draft.script);
+    const script = parse(draft.script, given);
     if (script.problem) return script;
+    draft.script = JSON.stringify(script, null, 2) + '\n';
     const missing = script.scenes.findIndex((s) => s.code && !(s.code in draft.modules));
     if (missing >= 0) return { problem: `scenes[${missing}].code: the reply has no \`\`\`js ${script.scenes[missing].code} block` };
     const narration = await save(draft);
@@ -77,8 +81,27 @@ export async function make({
   return { page: join(out, 'index.html'), file, reviewed };
 }
 
-/** The script in a draft's JSON, or { problem } if it is not JSON or breaks the schema. */
-function parse(json) {
+/**
+ * Copies the logo and music files into out, and resolves to the script fields they and the brand
+ * colours set: { brand, music }, each left out when not given. Every draft gets them, whatever it says.
+ */
+async function assets(out, { logo, brand = {}, music }) {
+  for (const [key, colour] of Object.entries(brand)) {
+    if (!/^#[0-9a-f]{6}$/i.test(colour)) throw new Error(`cuadro: the brand's ${key} must be a #rrggbb colour, not ${colour}`);
+  }
+  const copy = async (file, name) => {
+    await copyFile(file, join(out, name + extname(file)));
+    return name + extname(file);
+  };
+  if (logo) brand = { ...brand, logo: await copy(logo, 'logo') };
+  return {
+    ...(Object.keys(brand).length && { brand }),
+    ...(music && { music: await copy(music, 'music') }),
+  };
+}
+
+/** The script in a draft's JSON with the given fields set over it, or { problem } if it is not JSON or breaks the schema. */
+function parse(json, given) {
   let script;
   try {
     script = JSON.parse(json);
@@ -86,6 +109,10 @@ function parse(json) {
     return { problem: `script.json is not JSON: ${e.message}` };
   }
   try {
+    if (script?.constructor === Object) {
+      if (given.brand) script.brand = { ...script.brand, ...given.brand };
+      if (given.music) script.music = given.music;
+    }
     return checkScript(script);
   } catch (e) {
     return { problem: `script.json: ${e.message}` };
@@ -280,11 +307,14 @@ function catalogue(dts) {
   return `\`\`\`ts\n${shared}\n${scenes.join('\n\n')}\n\`\`\``;
 }
 
-/** The first user message: the prompt, and whether the lines will be spoken. */
-function request(prompt, narrated) {
+/** The first user message: the prompt, whether the lines will be spoken, and the script fields cuadro sets. */
+function request(prompt, narrated, given) {
+  const fixed = Object.keys(given).length
+    ? `\ncuadro sets these fields itself, so keep them: ${JSON.stringify(given)}.${given.brand?.logo ? ' The endCard shows the logo.' : ''}\n`
+    : '';
   return `Write script.json for this video:\n\n${prompt}\n\n${narrated
     ? 'It is narrated: every scene needs a say line.'
-    : 'It is not narrated yet, so each scene lasts its type\'s default length; still write a say line for each scene.'}\n`;
+    : 'It is not narrated yet, so each scene lasts its type\'s default length; still write a say line for each scene.'}\n${fixed}`;
 }
 
 /** The user message after a failed check. */

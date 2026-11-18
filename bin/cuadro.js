@@ -20,7 +20,8 @@ const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audi
        cuadro voice <script.json> --provider p [--voice v] [--model m] [--out dir] [--base-url url]
                    [--fps n]
        cuadro make "<prompt>" --provider p [--model m] [--out dir] [--rounds n] [--base-url url]
-                   [--voice-provider p [--voice v]]
+                   [--voice-provider p [--voice v]] [--logo file] [--brand "#hex[,#hex]"]
+                   [--music file]
 
   --props json   props merged over the composition's defaults
   --audio file   soundtrack, cut or padded to the video's length
@@ -46,6 +47,10 @@ const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audi
   --rounds n     revisions after the first draft, at most (default: 3)
   --base-url u   the provider's API address, to use another server
   --voice-provider p, --voice v   narrate it, with a voice provider above
+  --logo file    the brand's logo, shown on the end card
+  --brand list   the brand's accent colours, "#rrggbb" or "#rrggbb,#rrggbb"
+  --music file   music under the narration, cut or padded to the video's length
+  The logo, colours and music are set in the script whatever the model writes.
   It exits 3 when the script passed the check but the model did not approve it.
 
   API keys come from ELEVENLABS_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY,
@@ -61,6 +66,7 @@ try {
       provider: { type: 'string' }, voice: { type: 'string' }, model: { type: 'string' },
       out: { type: 'string' }, 'base-url': { type: 'string' },
       rounds: { type: 'string' }, fps: { type: 'string' }, 'voice-provider': { type: 'string' },
+      logo: { type: 'string' }, brand: { type: 'string' }, music: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -154,10 +160,14 @@ async function runMake() {
   const rounds = Number(values.rounds ?? 3);
   if (!Number.isInteger(rounds) || rounds < 0) fail('--rounds must be a whole number');
   if (values.voice && !values['voice-provider']) fail('make takes --voice only with --voice-provider');
+  const colours = values.brand?.split(',') ?? [];
+  if (colours.length > 2 || !colours.every((c) => /^#[0-9a-f]{6}$/i.test(c))) fail('--brand must be one or two #rrggbb colours, comma separated');
+  const [accent, accent2] = colours;
   try {
     const { page, reviewed } = await make({
       prompt: positionals[1], provider: values.provider, model: values.model, baseUrl: values['base-url'], out: values.out, rounds,
-      voiceProvider: values['voice-provider'], voice: values.voice, onStep: (m) => console.error(m),
+      voiceProvider: values['voice-provider'], voice: values.voice, logo: values.logo, music: values.music,
+      brand: values.brand && { accent, ...(accent2 && { accent2 }) }, onStep: (m) => console.error(m),
     });
     console.error(`preview: serve this folder with byte ranges (npx serve .) and open /${relative('.', page)}`);
     console.error(`render:  npx cuadro render ${page} out.mp4`);

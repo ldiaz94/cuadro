@@ -20,6 +20,12 @@ export function make(options: {
   voiceProvider?: string;
   /** The speech provider's voice (default: the provider's own). */
   voice?: string;
+  /** An image file, copied into out and set as the script's brand logo (the endCard shows it). */
+  logo?: string;
+  /** The brand's #rrggbb colours, set in every draft whatever the model writes. */
+  brand?: { accent?: string; accent2?: string };
+  /** A sound file, copied into out and set as the script's music, under the narration. */
+  music?: string;
   /** How long one step in Chromium may take, in milliseconds (default: 30000); a slower one is a problem sent to the model. */
   timeout?: number;
   /** Called with each progress message. */

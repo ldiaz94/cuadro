@@ -18,7 +18,7 @@ const from: number = c.clips[0].from;
 void render({ page: 'demo/index.html', out: 'out.mp4', props: { title: 'x' }, workers: 2, onProgress: (done: number, total: number) => {} });
 void still({ page: 'demo/index.html', out: 'sheet.png', frames: [0, 30], columns: 2 });
 void still({ page: 'demo/index.html', out: 'sheet.png', every: 2 });
-void make({ prompt: 'a box', provider: 'anthropic', rounds: 2, onStep: (m: string) => {} }).then(({ file }) => file.length);
+void make({ prompt: 'a box', provider: 'anthropic', rounds: 2, logo: 'logo.svg', brand: { accent: '#4d65ff' }, music: 'music.wav', onStep: (m: string) => {} }).then(({ file }) => file.length);
 
 import { theme, themes } from 'cuadro/theme';
 import { stage, play, playLength, scene, beats, Fade, title, kinetic, stat, steps, tiles, endCard } from 'cuadro/scenes';

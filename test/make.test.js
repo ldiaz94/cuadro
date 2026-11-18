@@ -1,6 +1,6 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chat } from '../src/llm.js';
 import { make } from '../src/make.js';
@@ -271,4 +271,22 @@ test('make: a syntax error in a code scene names its file and line', async (t) =
   t.after(() => s.close());
   await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out });
   assert.match(lastText(s, 1), /scenes\/box\.js:2:\d+/);
+});
+
+test('make: the logo, brand colours and music are copied in and set over what the model writes', async (t) => {
+  process.env.ANTHROPIC_API_KEY = 'ka';
+  const out = await folder(t);
+  const music = join(out, 'tune.wav');
+  await writeFile(music, wav(Buffer.alloc(8000), 8000));
+  const own = JSON.stringify({ ...JSON.parse(script), brand: { accent: '#000000', logo: 'mine.png' }, music: 'other.mp3' }, null, 2);
+  const s = await fakeServer([reply(own, { 'scenes/box.js': box }), said('OK')]);
+  t.after(() => s.close());
+  const result = await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out, logo: 'test/dot.svg', brand: { accent: '#4d65ff', accent2: '#f7a072' }, music });
+  const written = JSON.parse(await readFile(result.file, 'utf8'));
+  assert.deepEqual(written.brand, { accent: '#4d65ff', logo: 'logo.svg', accent2: '#f7a072' });
+  assert.equal(written.music, 'music.wav');
+  assert.deepEqual(await readFile(join(out, 'logo.svg')), await readFile('test/dot.svg'));
+  assert.deepEqual(await readFile(join(out, 'music.wav')), await readFile(music));
+  assert.match(lastText(s, 0), /cuadro sets these fields itself, so keep them: .*"music":"music.wav".*The endCard shows the logo/);
+  assert.equal(result.reviewed, true);
 });
