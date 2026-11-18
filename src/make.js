@@ -125,7 +125,10 @@ are relative to video.js, which sits in the same folder as its index.html.
 Rules for a deterministic video: draw only from frame and props. Never use Date.now, Math.random
 without a seed, requestAnimationFrame, setTimeout, CSS animations or transitions. Load everything the
 video needs before calling composition, except fonts and <img>, which cuadro waits for. Use no
-network resources: no remote fonts, images or scripts.
+network resources: no remote fonts, images or scripts. Name fonts by their generic family (sans-serif,
+serif, monospace) or a font file the video loads: a named system font such as Helvetica may be missing,
+or be a bitmap font that draws nothing, on the machine that renders. Make sure every element the request
+asks for ends up fully visible.
 
 Here is cuadro's guide:
 
