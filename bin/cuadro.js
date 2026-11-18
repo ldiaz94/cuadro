@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // cuadro's command line: `cuadro render <page> <out.mp4> [options]`,
-// `cuadro voice <script.json> --provider p [options]` and
+// `cuadro still <page> <out.png> [options]`, `cuadro voice <script.json> --provider p [options]` and
 // `cuadro make "<prompt>" --provider p [options]`.
 // Parses the arguments, calls render(), voice() or make() and shows
 // progress on stderr: for render, one updating line on a terminal, about
@@ -11,10 +11,12 @@
 import { relative } from 'node:path';
 import { parseArgs } from 'node:util';
 import { make } from '../src/make.js';
-import { render } from '../src/render.js';
+import { render, still } from '../src/render.js';
 import { voice } from '../src/voice.js';
 
-const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audio file] [--root dir]
+const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audio file] [--root dir] [--workers n]
+       cuadro still <page.html> <out.png> [--frames 0,30,60 | --every 2s] [--columns n]
+                   [--props json] [--root dir]
        cuadro voice <script.json> --provider p [--voice v] [--model m] [--out dir] [--base-url url]
                    [--fps n]
        cuadro make "<prompt>" --provider p [--model m] [--out dir] [--rounds n] [--base-url url]
@@ -23,6 +25,10 @@ const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audi
   --props json   props merged over the composition's defaults
   --audio file   soundtrack, cut or padded to the video's length
   --root dir     directory served to the browser (default: .); the page must be under it
+  --workers n    tabs rendering at once (default: up to 4, and no more than the CPUs)
+  --frames list  still: the frames to render, comma separated (one: a PNG; several: a contact sheet)
+  --every Ns     still: one frame every N seconds (default: 2s)
+  --columns n    still: frames per row of the contact sheet
 
   --provider p   elevenlabs, gemini, openai (or any compatible server) or qwen
   --voice v      the provider's voice (default: the provider's own)
@@ -49,7 +55,7 @@ try {
   args = parseArgs({
     allowPositionals: true,
     options: {
-      props: { type: 'string' }, audio: { type: 'string' }, root: { type: 'string', default: '.' },
+      props: { type: 'string' }, workers: { type: 'string' }, frames: { type: 'string' }, every: { type: 'string' }, columns: { type: 'string' }, audio: { type: 'string' }, root: { type: 'string', default: '.' },
       provider: { type: 'string' }, voice: { type: 'string' }, model: { type: 'string' },
       out: { type: 'string' }, 'base-url': { type: 'string' },
       rounds: { type: 'string' }, fps: { type: 'string' }, 'voice-provider': { type: 'string' },
@@ -63,7 +69,8 @@ const { values, positionals } = args;
 if (values.help) { console.log(usage); process.exit(0); }
 if (positionals[0] === 'voice') await runVoice();
 if (positionals[0] === 'make') await runMake();
-if (positionals[0] !== 'render' || positionals.length !== 3) fail('expected: render <page.html> <out.mp4>, voice <script.json> or make "<prompt>"');
+if (positionals[0] === 'still') await runStill();
+if (positionals[0] !== 'render' || positionals.length !== 3) fail('expected: render <page.html> <out.mp4>, still <page.html> <out.png>, voice <script.json> or make "<prompt>"');
 let props;
 try {
   props = values.props && JSON.parse(values.props);
@@ -78,6 +85,7 @@ try {
   let every = 1;
   await render({
     page: positionals[1], out: positionals[2], props, audio: values.audio, root: values.root,
+    workers: values.workers === undefined ? undefined : Number(values.workers),
     onProgress(done, total) {
       if (done === 1) every = tty ? 1 : Math.max(1, Math.round(total / 10));
       if (done % every && done !== total) return;
@@ -92,6 +100,32 @@ try {
   if (tty) process.stderr.write('\n');
   console.error(e.message);
   process.exit(1);
+}
+
+/** Runs `cuadro still`, and exits. */
+async function runStill() {
+  if (positionals.length !== 3) fail('expected: still <page.html> <out.png>');
+  if (values.frames && values.every) fail('still takes --frames or --every, not both');
+  const every = values.every === undefined ? undefined : /^(\d+(?:\.\d+)?)s$/.exec(values.every)?.[1];
+  if (values.every !== undefined && !(Number(every) > 0)) fail('--every must be a number of seconds, like 2s');
+  let props;
+  try {
+    props = values.props && JSON.parse(values.props);
+  } catch (e) {
+    fail(`--props is not JSON: ${e.message}`);
+  }
+  try {
+    await still({
+      page: positionals[1], out: positionals[2], props, root: values.root,
+      frames: values.frames?.split(',').map(Number), every: every && Number(every),
+      columns: values.columns === undefined ? undefined : Number(values.columns),
+    });
+    console.error(`wrote ${positionals[2]}`);
+  } catch (e) {
+    console.error(e.message);
+    process.exit(1);
+  }
+  process.exit(0);
 }
 
 /** Runs `cuadro voice`, one progress line per spoken line, and exits. */

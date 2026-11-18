@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ffmpeg, render } from '../src/render.js';
+import { ffmpeg, render, still } from '../src/render.js';
 
 const root = new URL('..', import.meta.url).pathname;
 const dir = mkdtempSync(join(tmpdir(), 'cuadro-'));
@@ -62,4 +62,32 @@ test('ffmpeg that runs past the video end, or stalls, is killed with an error', 
   await assert.rejects(ffmpeg(endless, 1).end(), /ran past the end/);
   const idle = ['-loglevel', 'error', '-listen_timeout', '-1', '-i', 'tcp://127.0.0.1:47123?listen=1', '-f', 'null', '-']; // waits for a peer that never comes
   await assert.rejects(ffmpeg(idle, 1, 500).end(), /no progress/);
+});
+
+// The grey of each frame of order.html, decoded: frame n is 6 * n.
+const greys = (file) => {
+  const raw = execFileSync('ffmpeg', ['-v', 'error', '-i', join(dir, file), '-vf', 'scale=1:1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { maxBuffer: 1 << 20 });
+  return [...raw];
+};
+
+test('with several workers the frames reach the video in order', async () => {
+  const seen = [];
+  await render({ page: join(root, 'test/order.html'), root, out: join(dir, 'w.mp4'), workers: 4, onProgress: (d) => seen.push(d) });
+  const grey = greys('w.mp4');
+  assert.equal(grey.length, 40);
+  grey.forEach((g, n) => assert.ok(Math.abs(g - 6 * n) <= 6, `frame ${n} came out grey ${g}`));
+  assert.deepEqual(seen, Array.from({ length: 40 }, (_, i) => i + 1));
+});
+
+test('still: one frame is a PNG at the composition size; several are a contact sheet', async () => {
+  const size = (file) => execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', join(dir, file)], { encoding: 'utf8' }).trim();
+  const page = join(root, 'test/order.html');
+  await still({ page, root, out: join(dir, 's1.png'), frames: [20] });
+  assert.equal(size('s1.png'), '64,48');
+  assert.deepEqual([...execFileSync('ffmpeg', ['-v', 'error', '-i', join(dir, 's1.png'), '-vf', 'scale=1:1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'])], [120]);
+  await still({ page, root, out: join(dir, 's3.png'), frames: [0, 10, 39], columns: 2 });
+  assert.equal(size('s3.png'), '128,96');
+  await still({ page, root, out: join(dir, 's4.png'), every: 1 }); // 40 frames at 10 fps: 4 frames, in a row
+  assert.equal(size('s4.png'), '256,48');
+  await assert.rejects(still({ page, root, out: join(dir, 's5.png'), frames: [40] }), /frames must be whole numbers from 0 to 39/);
 });

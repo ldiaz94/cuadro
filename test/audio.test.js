@@ -17,7 +17,7 @@ const tone = (name, frequency, seconds) => {
   return '/' + relative(root, join(dir, name));
 };
 const props = { a: tone('a.wav', 440, 0.3), b: tone('b.wav', 660, 1), c: tone('c.wav', 880, 1) };
-const run = (out, audio) => render({ page: join(root, 'test/audio.html'), root, out: join(dir, out), props, audio });
+const run = (out, audio, workers) => render({ page: join(root, 'test/audio.html'), root, out: join(dir, out), props, audio, workers });
 
 /** The silent stretches of file's audio, as [start, end] in seconds rounded to 0.05. */
 function silences(file) {
@@ -34,6 +34,13 @@ test('clips are heard from their frame until their sequence ends; an unreached o
   await run('clips.mp4');
   // a: 0.5 to 0.8 s (the file ends); b: 1.5 s, cut at 2.0 s; c: never.
   assert.deepEqual(silences('clips.mp4'), [[0, 0.5], [0.8, 1.5], [2, 3]]);
+});
+
+test('with several workers the clips are the same as with one', async () => {
+  await run('one.mp4', undefined, 1);
+  await run('four.mp4', undefined, 4);
+  assert.deepEqual(silences('four.mp4'), [[0, 0.5], [0.8, 1.5], [2, 3]]);
+  assert.equal(md5('four.mp4'), md5('one.mp4'));
 });
 
 test('a soundtrack plays from frame 0 together with the clips', async () => {

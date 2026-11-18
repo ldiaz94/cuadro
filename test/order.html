@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<script type="importmap">{ "imports": { "spark": "/node_modules/spark/src/index.js", "cuadro": "/src/index.js" } }</script>
+<script type="module">
+  // 40 frames, each a flat grey of 6 * its number, so a decoded frame says which frame it was.
+  import { composition, html } from 'cuadro';
+  composition({
+    width: 64, height: 48, fps: 10, durationInFrames: 40,
+    view: (frame) => html`<div style=${() => ({ background: `rgb(${6 * frame()},${6 * frame()},${6 * frame()})`, width: '64px', height: '48px' })}></div>`,
+  });
+</script>

@@ -1,7 +1,7 @@
 // Compiled, never run (npm run types): uses the API as a video would, so a
 // wrong declaration fails to type-check.
 import { composition, sequence, series, audio, interpolate, spring, easeOut, bezier, html, signal, type View } from 'cuadro';
-import { render } from 'cuadro/render';
+import { render, still } from 'cuadro/render';
 import { make } from 'cuadro/make';
 
 const dot: View = (frame) => html`<b>${() => interpolate(frame(), [0, 10], [0, 1], { easing: easeOut, extrapolate: { left: 'clamp', right: 'extend' } })}</b>`;
@@ -15,7 +15,9 @@ const [, set] = signal(n);
 set((x) => x + 1);
 void c.setFrame(0);
 const from: number = c.clips[0].from;
-void render({ page: 'demo/index.html', out: 'out.mp4', props: { title: 'x' }, onProgress: (done: number, total: number) => {} });
+void render({ page: 'demo/index.html', out: 'out.mp4', props: { title: 'x' }, workers: 2, onProgress: (done: number, total: number) => {} });
+void still({ page: 'demo/index.html', out: 'sheet.png', frames: [0, 30], columns: 2 });
+void still({ page: 'demo/index.html', out: 'sheet.png', every: 2 });
 void make({ prompt: 'a box', provider: 'anthropic', rounds: 2, onStep: (m: string) => {} }).then(({ file }) => file.length);
 
 import { theme, themes } from 'cuadro/theme';
