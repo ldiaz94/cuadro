@@ -186,10 +186,10 @@ async function twice(request, retrying) {
   }
 }
 
-/** Whether a review reply approves: no code block, and the word OK (bold or not) at its start or its end. */
+/** Whether a review reply approves: the word OK (bold or not) at its start or its end, and no defects listed nor code block. */
 function approves(reply) {
   const text = reply.replace(/[*_]/g, '').trim();
-  return !text.includes('```') && (/^OK\b/.test(text) || /\bOK[.!]?$/.test(text));
+  return (/^OK\b/.test(text) || /\bOK[.!]?$/.test(text)) && !listed(text).length && !text.includes('```');
 }
 
 /** The numbered defects a review lists before its first code block. */

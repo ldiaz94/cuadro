@@ -334,6 +334,18 @@ test('make: new defects every review run out the rounds, unreviewed', async (t) 
   assert.equal(result.reviewed, false);
 });
 
+test('make: a review that only ends with OK, or opens with OK and lists defects, is no approval', async (t) => {
+  process.env.ANTHROPIC_API_KEY = 'ka';
+  for (const verdict of ['1. Scene 1: the title is too small.\n\nEverything else looks OK.', 'OK, one defect:\n1. Scene 1: the title is too small.']) {
+    const out = await folder(t);
+    const s = await fakeServer([reply(script, { 'scenes/box.js': box }), said(verdict), said('OK')]);
+    t.after(() => s.close());
+    const result = await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out });
+    assert.equal(s.requests.length, 2, verdict);
+    assert.equal(result.reviewed, false, verdict);
+  }
+});
+
 test('make: a bold OK after defects approves', async (t) => {
   process.env.ANTHROPIC_API_KEY = 'ka';
   const out = await folder(t);
