@@ -7,6 +7,8 @@ export function player(options?: { script?: string; voice?: string | null; width
 /**
  * What a code scene gets. A code scene is an ES module whose default export takes a CodeScene and
  * returns a view: `export default ({ length, levels }) => scene(length, (t) => html`...`)`.
+ * scene() lays out its children in a centred column inside the frame's padding; for a freer layout,
+ * place things absolutely inside a child that fills it (position: relative; flex: 1).
  * It draws inside the themed stage, so it styles with the theme's custom properties (var(--accent),
  * var(--t-2), sizes in cqmin, cqw and cqh) and may reuse the designed scenes' classes (cq-kicker,
  * cq-head, cq-display, and cq-mark with --w from 0 to 1 for its sweep). It moves for its whole

@@ -1,87 +1,130 @@
-// cuadro make: turns a prompt into a video's source, by asking a language
-// model and checking what it writes.
-// The model gets cuadro's types and the README's "Learn it" section, and
-// replies with a whole video.js. cuadro writes it beside an index.html in
-// the output folder and opens it in Chromium. A page error, a failed
-// setFrame, or a step that takes too long sends the problem (and the
-// frames) back for a fixed file. A file that passes is shown to the model
-// as five frames, for one review (with a note if they are all the same):
-// it replies OK, or a better file, which is checked again. A review
-// request that fails is asked once more. It stops at OK or after `rounds`
-// revisions, and keeps the last file that passed, also when a later reply
-// or request fails; the result says whether the model approved that file.
+// cuadro make: turns a prompt into a video's scene script, by asking a
+// language model and checking what it writes.
+// The model gets the script format, the catalogue of designed scenes (their
+// doc comments and props from scenes.d.ts, their limits from script.js),
+// the themes, and the code-scene contract (player.d.ts), and replies with
+// script.json plus a module for each `code` scene. cuadro checks the script
+// against its schema, writes it beside an index.html that runs the player
+// in the output folder, speaks its `say` lines if there is a voice
+// provider, and opens it in Chromium. A schema error, a page error, a
+// failed setFrame, or a step that takes too long sends the problem (and
+// the frames) back for a fix. A script that passes is shown to the model
+// as one still per scene, for one review: it replies OK, or a better
+// script, which is checked again. A review request that fails is asked
+// once more. It stops at OK or after `rounds` revisions, and keeps the last
+// script that passed, also when a later reply or request fails; the result
+// says whether the model approved it.
 // The model's code runs in a tab that may load only from cuadro's server,
 // which serves only the output folder and the two libraries.
-// With a voice provider it first asks for a narration script, speaks it
-// with voice.js, and has the video follow the lines' lengths.
-// Depends on llm.js, voice.js, serve.js and chromium.js. Leaves out
-// rendering the mp4 (that is `cuadro render`), editing an existing
-// video.js, and any check of how good the video looks beyond the review.
+// Depends on llm.js, script.js, voice.js, serve.js and chromium.js. Leaves
+// out rendering the mp4 (that is `cuadro render`), editing an existing
+// script, writing a whole page instead of a script, and any check of how
+// good the video looks beyond the review.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { StepTimeout, launch, within } from './chromium.js';
 import { chat } from './llm.js';
+import { Fade } from './scenes.js';
+import { check as checkScript, timing, types } from './script.js';
 import { serve } from './serve.js';
+import { theme, themes } from './theme.js';
 import { voice } from './voice.js';
 
-/** Makes <out>/video.js and <out>/index.html from prompt; onStep(message) reports progress. */
+/** Makes <out>/script.json, its code scenes and <out>/index.html from prompt; onStep(message) reports progress. */
 export async function make({
   prompt, provider, model, baseUrl, out = 'make-out', rounds = 3, root = process.cwd(),
   voiceProvider, voice: voiceName, timeout = StepTimeout, onStep = () => {},
 }) {
   if (!inside(root, out)) throw new Error(`cuadro: ${out} must be a folder inside ${resolve(root)}`);
   const libs = libraries(root);
-  await mkdir(out, { recursive: true });
-  await writeFile(join(out, 'index.html'), page(libs));
+  await mkdir(join(out, 'scenes'), { recursive: true });
+  await writeFile(join(out, 'index.html'), page(libs, Boolean(voiceProvider)));
   const system = await context();
-  const messages = [];
+  const messages = [{ role: 'user', text: request(prompt, Boolean(voiceProvider)) }];
   const ask = async () => {
     const text = await chat({ provider, model, baseUrl, system, messages });
     messages.push({ role: 'assistant', text });
     return text;
   };
 
-  const narration = voiceProvider && await narrate({ prompt, out, ask, messages, voiceProvider, voiceName, provider, onStep });
-  messages.push({ role: 'user', text: request(prompt, narration) });
-  const file = join(out, 'video.js');
-  const { passed, reviewed } = await revise({ ask, messages, rounds, file, check: () => check(root, out, libs, timeout), provider, onStep });
-  await writeFile(file, passed);
+  let saved; // the draft whose files are on disk
+  /** Writes a draft's script and modules, speaks its lines, and resolves to its voice.json (undefined without a voice provider). */
+  const save = async (draft) => {
+    saved = draft;
+    await writeFile(join(out, 'script.json'), draft.script);
+    for (const [path, source] of Object.entries(draft.modules)) await writeFile(join(out, path), source);
+    if (!voiceProvider) return undefined;
+    return voice({
+      script: join(out, 'script.json'), out: join(out, 'voice'), provider: voiceProvider, voice: voiceName,
+      onLine: ({ id, index, total, skipped }) => onStep(`voice ${index + 1}/${total}: ${id}${skipped ? ' (unchanged)' : ''}`),
+    });
+  };
+  /** Checks a draft against the schema, saves it, and shoots a still per scene in Chromium. */
+  const attempt = async (draft) => {
+    const script = parse(draft.script);
+    if (script.problem) return script;
+    const missing = script.scenes.findIndex((s) => s.code && !(s.code in draft.modules));
+    if (missing >= 0) return { problem: `scenes[${missing}].code: the reply has no \`\`\`js ${script.scenes[missing].code} block` };
+    const narration = await save(draft);
+    return check(root, out, libs, stills(script, narration), timeout);
+  };
+
+  const { passed, reviewed } = await revise({ ask, messages, rounds, attempt, provider, onStep });
+  if (saved !== passed) await save(passed);
+  const file = join(out, 'script.json');
   onStep(reviewed ? `done: ${file}` : `not reviewed: ${file} passed the check, but the model did not approve it`);
   return { page: join(out, 'index.html'), file, reviewed };
 }
 
+/** The script in a draft's JSON, or { problem } if it is not JSON or breaks the schema. */
+function parse(json) {
+  let script;
+  try {
+    script = JSON.parse(json);
+  } catch (e) {
+    return { problem: `script.json is not JSON: ${e.message}` };
+  }
+  try {
+    return checkScript(script);
+  } catch (e) {
+    return { problem: `script.json: ${e.message}` };
+  }
+}
+
 /**
- * Has the model write, fix and review file until it approves or the rounds run out; resolves to
- * { passed, reviewed }: the last source that passed the check, and whether the model approved it. Once
- * one has passed, any later failure (a reply without code, a network error) stops the loop with that
- * source instead of losing it.
+ * Has the model write, fix and review the script until it approves or the rounds run out; resolves
+ * to { passed, reviewed }: the last draft that passed the check, and whether the model approved it.
+ * A draft is { script, modules }: the JSON text and every code scene written so far, by path, so a
+ * reply may leave out the modules it does not change. Once one has passed, any later failure (a reply
+ * without a script, a network error) stops the loop with that draft instead of losing it.
  */
-async function revise({ ask, messages, rounds, file, check, provider, onStep }) {
-  let passed, problem, reviewing = false, reviewed = false;
+async function revise({ ask, messages, rounds, attempt, provider, onStep }) {
+  let passed, problem, reviewing = false, reviewed = false, modules = {};
   try {
     for (let round = 1; round <= rounds + 1; round++) {
       onStep(`round ${round}: asking ${provider}…`);
       const reply = reviewing ? await twice(ask, (e) => onStep(`round ${round}: ${e.message.split('\n')[0]}; asking again`)) : await ask();
-      const source = code(reply);
-      if (reviewing && !source && approves(reply)) {
+      const script = block(reply);
+      if (reviewing && !script && approves(reply)) {
         reviewed = true;
         break;
       }
-      if (!source) throw new Error('cuadro: the model replied without a ```js block holding video.js');
-      await writeFile(file, source);
-      const result = await check();
+      if (!script) throw new Error('cuadro: the model replied without a ```json block holding script.json');
+      modules = { ...modules, ...codeBlocks(reply) };
+      const draft = { script, modules };
+      const result = await attempt(draft);
       problem = result.problem;
       reviewing = !problem;
-      if (reviewing) passed = source;
+      if (reviewing) passed = draft;
       onStep(`round ${round}: ${problem ? problem.split('\n')[0] : `ok${round <= rounds ? ', reviewing' : ''}`}`);
-      messages.push({ role: 'user', text: reviewing ? review(result.frames, result.note) : fix(problem), images: result.shots });
+      messages.push({ role: 'user', text: reviewing ? review(result.frames) : fix(problem), images: result.shots });
     }
   } catch (e) {
     if (!passed) throw e;
-    onStep(`stopped: ${e.message.split('\n')[0]}; keeping the last file that passed`);
+    onStep(`stopped: ${e.message.split('\n')[0]}; keeping the last script that passed`);
   }
-  if (!passed) throw new Error(`cuadro: no video.js passed the check in ${rounds + 1} tries; the last problem:\n${problem}`);
+  if (!passed) throw new Error(`cuadro: no script.json passed the check in ${rounds + 1} tries; the last problem:\n${problem}`);
   return { passed, reviewed };
 }
 
@@ -101,105 +144,148 @@ function approves(reply) {
   return !text.includes('```') && (/^OK\b/.test(text) || /\bOK[.!]?$/.test(text));
 }
 
-/** The contents of the first ```js block in a reply, or undefined. */
-function code(reply) {
-  return reply.match(/```(?:js|javascript)[^\n]*\n([\s\S]*?)```/)?.[1];
+/** The contents of the first ```json block in a reply, or undefined. */
+function block(reply) {
+  return reply.match(/```json[^\n]*\n([\s\S]*?)```/)?.[1];
 }
 
-/** The system prompt: what cuadro is, its types, the README's guide and the rules. */
-async function context() {
-  const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
-  const learn = readme.slice(readme.indexOf('## Learn it'), readme.indexOf('\n## ', readme.indexOf('## Learn it') + 1));
-  const types = await readFile(new URL('./index.d.ts', import.meta.url), 'utf8');
-  const spark = await readFile(new URL('./index.d.ts', import.meta.resolve('spark')), 'utf8');
-  return `You write videos in code with cuadro, a small JavaScript library on spark, a reactive library.
-A video is an ES module, video.js, loaded by a page in Chromium. It calls composition(...), and draws
-everything as a function of the frame signal. cuadro renders it by setting every frame in turn and
-taking a screenshot.
-
-Your output: reply with exactly one \`\`\`js fenced block holding the whole video.js, and nothing else
-that matters. It imports only from 'cuadro' (which re-exports all of spark, including html). It calls
-composition with width 1280, height 720 and fps 30, unless the request says otherwise. Paths to files
-are relative to video.js, which sits in the same folder as its index.html.
-
-Rules for a deterministic video: draw only from frame and props. Never use Date.now, Math.random
-without a seed, requestAnimationFrame, setTimeout, CSS animations or transitions. Load everything the
-video needs before calling composition, except fonts and <img>, which cuadro waits for. Use no
-network resources: no remote fonts, images or scripts. Name fonts by their generic family (sans-serif,
-serif, monospace) or a font file the video loads: a named system font such as Helvetica may be missing,
-or be a bitmap font that draws nothing, on the machine that renders. Make sure every element the request
-asks for ends up fully visible.
-
-Here is cuadro's guide:
-
-${learn}
-Here are cuadro's types (src/index.d.ts):
-
-\`\`\`ts
-${types}\`\`\`
-
-And spark's, which cuadro re-exports:
-
-\`\`\`ts
-${spark}\`\`\`
-`;
-}
-
-/** The first user message: the prompt, and the narration's lines if there are any. */
-function request(prompt, narration) {
-  let text = `Write video.js for this video:\n\n${prompt}\n`;
-  if (narration) {
-    text += `
-It is narrated. voice/voice.json (beside video.js) holds the spoken lines, in order, with their
-lengths in seconds:
-
-${JSON.stringify(narration, null, 2)}
-
-Import it with: import voice from './voice/voice.json' with { type: 'json' };
-Make one scene per line, sized from its seconds (Math.ceil(seconds * fps) plus a short pause), and
-place each line's clip in its scene with audio('voice/' + line.file, { volume: 1 }) inside the
-matching sequence. Read the lengths from the imported voice.json, not from the numbers above.
-`;
+/** The reply's code scenes, by path: each ```js block named scenes/<name>.js, after the fence or on its first line as a comment. */
+function codeBlocks(reply) {
+  const found = {};
+  for (const [, info, body] of reply.matchAll(/```(?:js|javascript)([^\n]*)\n([\s\S]*?)```/g)) {
+    const path = info.match(ScenePath)?.[0] ?? body.match(FirstLinePath)?.[1];
+    if (path) found[path] = body;
   }
-  return text;
+  return found;
 }
 
-/** Asks for a narration script, speaks it into <out>/voice, and returns its { lines: [{ id, file, seconds }] }. */
-async function narrate({ prompt, out, ask, messages, voiceProvider, voiceName, provider, onStep }) {
-  messages.push({ role: 'user', text: `Before video.js, write the narration for this video, one line per scene:
+/** A code scene's path, as the schema allows it; and the same as a comment on a block's first line. */
+const ScenePath = /scenes\/[A-Za-z0-9_-]+\.js/;
+const FirstLinePath = /^\s*\/\/\s*(scenes\/[A-Za-z0-9_-]+\.js)/;
 
-${prompt}
-
-Reply with one \`\`\`json block holding { "lines": [{ "id": "...", "text": "..." }] }. Each id is
-unique and made of letters, digits, - or _.` });
-  onStep(`script: asking ${provider}…`);
-  const reply = await ask();
-  const json = reply.match(/```(?:json)?[^\n]*\n([\s\S]*?)```/)?.[1] ?? reply;
-  let script;
-  try {
-    script = JSON.parse(json);
-  } catch {
-    throw new Error('cuadro: the model\'s narration script is not JSON');
-  }
-  const file = join(out, 'script.json');
-  await writeFile(file, JSON.stringify(script, null, 2) + '\n');
-  // voice() checks the script: lines present, ids safe and unique, text not empty.
-  const { lines } = await voice({
-    script: file, out: join(out, 'voice'), provider: voiceProvider, voice: voiceName,
-    onLine: ({ id, index, total, skipped }) => onStep(`voice ${index + 1}/${total}: ${id}${skipped ? ' (unchanged)' : ''}`),
+/** The frames to review: one per scene, three quarters in, when its beats have mostly arrived. */
+function stills(script, narration) {
+  let from = 0;
+  return timing(script, narration, narration?.fps ?? 30).map(({ length }) => {
+    const frame = from + Math.round(0.75 * length);
+    from += length - Fade;
+    return frame;
   });
-  return { lines: lines.map(({ id, file, seconds }) => ({ id, file, seconds })) };
+}
+
+/** The system prompt: the script format, the scene catalogue, the themes and the code-scene contract. */
+async function context() {
+  const read = (file) => readFile(new URL(file, import.meta.url), 'utf8');
+  const [scenesTypes, playerTypes, levelTypes, indexTypes] = await Promise.all(['./scenes.d.ts', './player.d.ts', './level.d.ts', './index.d.ts'].map(read));
+  const sparkTypes = await readFile(new URL('./index.d.ts', import.meta.resolve('spark')), 'utf8');
+  return `You make short explainer videos with cuadro by writing a scene script: JSON that lists designed
+scenes in order, each with its line of narration. cuadro checks the script, speaks the lines, makes
+each scene as long as its line, and plays the scenes one after another with cross-fades on a themed
+1280x720 stage.
+
+# Your reply
+
+One \`\`\`json block holding script.json. For each code scene, also one \`\`\`js block whose fence names
+its path (\`\`\`js scenes/orbit.js) and holds the whole module. Nothing else in the reply is read.
+
+# The script
+
+{ "theme": "light", "brand": { "accent": "#rrggbb", "accent2": "#rrggbb", "logo": "logo.svg" },
+  "scenes": [ { "type": "title", "props": { ... }, "say": "..." },
+              { "code": "scenes/name.js", "say": "..." } ] }
+
+- theme: one of these (all scenes share it):
+${Object.entries(themes).map(([name, t]) => `  - ${name}: background ${t['--bg']}, text ${t['--ink']}, accents ${t['--accent']} and ${t['--accent2']}, headings in ${t['--font-display'].split(',')[0]}`).join('\n')}
+- brand (optional): accent and accent2 replace the theme's accents; pick the brand's own colours
+  when you know them, and make sure accent reads well on the theme's background. logo is an image
+  path relative to script.json: give it only if the request names one.
+- scenes: designed scenes ({ type, props, say }) or code scenes ({ code, say }); no other keys.
+- say: the words spoken over that scene, one or two natural sentences. The scene lasts as long as
+  its line (about 2.5 words a second), so the lines set the video's length.
+
+# Writing a good video
+
+- Five to seven scenes. Open with a title or kinetic scene that hooks; end with an endCard.
+- Put key words on screen, never the narration itself: short headlines, a few words per item.
+  Mark one or two key words per headline with *asterisks*.
+- Vary the scenes: don't use the same type twice in a row.
+- Use only facts the request gives or that you are sure of; never invent figures for a stat scene.
+- Prefer designed scenes; they are tested and look good. Write a code scene (at most two) only when
+  an idea needs something visual the designed scenes cannot show: a transformation, a flow between
+  things, a metaphor drawn with shapes. Make it the video's memorable moment: a full composition
+  that keeps moving for its whole length and follows its narration line, not a slide of text.
+
+# Designed scenes
+
+Each scene's props, as TypeScript (cuadro adds \`length\` itself; never give it):
+
+${catalogue(scenesTypes)}
+
+# Code scenes
+
+\`\`\`ts
+${playerTypes.slice(playerTypes.indexOf('/**\n * What a code scene gets'))}\`\`\`
+
+The theme's custom properties: ${Object.keys(theme()).join(' ')}.
+
+Rules: draw only from the frame. Never use Date.now, Math.random, requestAnimationFrame, setTimeout,
+CSS animations or transitions. Use no network resources. Fonts: var(--font-display) and
+var(--font-body). Keep everything inside the frame and text at least var(--t-small).
+
+cuadro/scenes (src/scenes.d.ts):
+
+\`\`\`ts
+${scenesTypes}\`\`\`
+
+cuadro/level (src/level.d.ts):
+
+\`\`\`ts
+${levelTypes}\`\`\`
+
+cuadro (src/index.d.ts), which re-exports spark:
+
+\`\`\`ts
+${indexTypes}\`\`\`
+
+spark:
+
+\`\`\`ts
+${sparkTypes}\`\`\`
+`;
+}
+
+/** Each designed scene type: its doc comment and props from scenes.d.ts, and the limits script.js checks. */
+function catalogue(dts) {
+  const shared = dts.slice(dts.indexOf('/** Text where'), dts.indexOf('/** A kicker'));
+  const scenes = Object.entries(types).map(([name, { props, seconds }]) => {
+    const found = dts.match(new RegExp(`/\\*\\* (.*) \\*/\\nexport function ${name}\\(props: (\\{[\\s\\S]*?\\})\\): View;`));
+    if (!found) throw new Error(`cuadro: scenes.d.ts has no ${name}(props)`);
+    const limits = Object.entries(props.props).filter(([, p]) => p.type === 'array').map(([key, p]) => `${key}: ${p.min} to ${p.max} items`);
+    const shape = found[2].replace(/length: number;\s*/, '').replace(/\s+/g, ' ');
+    return `// ${found[1].replace(/\.$/, '')}${limits.length ? ` (${limits.join('; ')})` : ''}; ${seconds} s without narration\n"${name}": ${shape}`;
+  });
+  return `\`\`\`ts\n${shared}\n${scenes.join('\n\n')}\n\`\`\``;
+}
+
+/** The first user message: the prompt, and whether the lines will be spoken. */
+function request(prompt, narrated) {
+  return `Write script.json for this video:\n\n${prompt}\n\n${narrated
+    ? 'It is narrated: every scene needs a say line.'
+    : 'It is not narrated yet, so each scene lasts its type\'s default length; still write a say line for each scene.'}\n`;
 }
 
 /** The user message after a failed check. */
 function fix(problem) {
-  return `The video failed cuadro's check:\n\n${problem}\n\nReply with the whole fixed video.js in one \`\`\`js block.`;
+  return `The script failed cuadro's check:\n\n${problem}\n\nReply with the whole fixed script.json in one \`\`\`json block, and any code scene you change.`;
 }
 
-/** The user message after a passed check, sent with the screenshots of frames, and a note if they are all the same. */
-function review(frames, note) {
-  return `It runs. These are frames ${frames.join(', ')}.${note ? ` Note: ${note}.` : ''} If the video matches the request, reply with just OK.
-Otherwise reply with the whole corrected video.js in one \`\`\`js block.`;
+/** The user message after a passed check, sent with one still per scene. */
+function review(frames) {
+  return `It runs. These are stills, one per scene, at frames ${frames.join(', ')}.
+Look for text that is cut off, overlaps or is too small, empty or unbalanced frames, and code scenes
+that don't show their idea clearly. If the video matches the request and looks finished, reply with
+just OK. Otherwise reply with the whole corrected script.json in one \`\`\`json block, and any code
+scene you change.`;
 }
 
 /** Where cuadro's and spark's entry modules are, as paths under root: the copies this module itself runs with. */
@@ -218,26 +304,32 @@ function inside(root, path) {
   return rel !== '' && rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel);
 }
 
-/** index.html: an import map for cuadro and spark, and video.js. */
-function page(libs) {
+/** index.html: an import map for cuadro's modules and spark, and the player, with or without voice/voice.json. */
+function page(libs, narrated) {
+  const src = '/' + dirname(libs.cuadro);
   const imports = { cuadro: '/' + libs.cuadro, spark: '/' + libs.spark };
+  for (const name of ['theme', 'scenes', 'level', 'player']) imports[`cuadro/${name}`] = `${src}/${name}.js`;
   return `<!doctype html>
 <meta charset="utf-8">
 <title>cuadro make</title>
 <script type="importmap">${JSON.stringify({ imports })}</script>
-<script type="module" src="./video.js"></script>
+<script type="module">
+  import { player } from 'cuadro/player';
+  await player(${narrated ? '' : '{ voice: null }'});
+</script>
 `;
 }
 
 /** How long to wait for the page to call composition, in milliseconds. */
 const LoadTimeout = 10000;
 
+// TODO: once render.js's still() is merged, shoot the review's stills with it instead of shoot() below.
 /**
- * Opens out/index.html and shoots five frames; resolves to { problem, shots, frames, note } (problem undefined if it passed).
+ * Opens out/index.html and shoots the given frames; resolves to { problem, shots, frames } (problem undefined if it passed).
  * The model's code runs here, so the server serves only out and the two libraries, and the tab may load
  * nothing from any other origin.
  */
-async function check(root, out, libs, timeout) {
+async function check(root, out, libs, frames, timeout) {
   let server, browser;
   try {
     server = await serve(root, { allow: [relative(root, out), dirname(libs.cuadro), dirname(libs.spark)] });
@@ -245,14 +337,14 @@ async function check(root, out, libs, timeout) {
     const tab = await browser.newPage();
     await tab.route('**', (route) => (new URL(route.request().url()).origin === server.origin ? route.continue() : route.abort()));
     const url = new URL(relative(resolve(root), resolve(out, 'index.html')).split(sep).join('/'), server.origin + '/');
-    return await shoot(tab, `${url.href}?render`, timeout);
+    return await shoot(tab, `${url.href}?render`, frames, timeout);
   } finally {
     await Promise.allSettled([browser?.close(), server?.close()]);
   }
 }
 
-/** Loads url in tab and shoots five frames, each step within timeout; any failure is the problem. */
-async function shoot(tab, url, timeout) {
+/** Loads url in tab and shoots the frames, each step within timeout; any failure is the problem. */
+async function shoot(tab, url, frames, timeout) {
   const errors = [];
   const shots = [];
   const failure = (why) => ({ problem: [...errors, why].filter(Boolean).join('\n'), shots });
@@ -265,17 +357,14 @@ async function shoot(tab, url, timeout) {
     const loaded = tab.waitForFunction(() => window.cuadro, null, { timeout: LoadTimeout }).then(() => true, () => false);
     if (!(await Promise.race([loaded, broke.then(() => false)]))) return failure('composition() was never called');
     const { width, height, durationInFrames: total } = await within(tab.evaluate(() => window.cuadro), timeout, 'reading window.cuadro');
-    if (!(Number.isInteger(total) && total > 0)) return failure(`durationInFrames is ${total}; it must be a positive whole number`);
     await tab.setViewportSize({ width, height });
-    const frames = [...new Set([0, 0.25, 0.5, 0.75, 1].map((q) => Math.round(q * (total - 1))))];
-    for (const n of frames) {
+    const shown = frames.map((n) => Math.min(n, total - 1));
+    for (const n of shown) {
       await within(tab.evaluate((n) => window.cuadro.setFrame(n), n), timeout, `setFrame(${n})`);
       if (errors.length) return failure();
       shots.push(await tab.screenshot({ clip: { x: 0, y: 0, width, height } }));
     }
-    // A still title card is fine, so this is only a note for the review; too short a video is not looked at.
-    const still = total >= 5 && shots.every((s) => s.equals(shots[0]));
-    return { shots, frames, note: still ? `frames ${frames.join(', ')} are all identical: nothing moves` : undefined };
+    return { shots, frames: shown };
   } catch (e) {
     return failure(e.message);
   }

@@ -1,6 +1,6 @@
 // Types for cuadro/make, the Node side: what TypeScript sees of src/make.js.
 
-/** Asks a language model for a video.js from prompt, checks it in Chromium, and has it fixed and reviewed. */
+/** Asks a language model for a scene script (and its code scenes) from prompt, checks it in Chromium, and has it fixed and reviewed. */
 export function make(options: {
   /** What the video should show. */
   prompt: string;
@@ -25,10 +25,10 @@ export function make(options: {
   /** Called with each progress message. */
   onStep?: (message: string) => void;
 }): Promise<{
-  /** <out>/index.html, which loads video.js. */
+  /** <out>/index.html, which plays the script. */
   page: string;
-  /** <out>/video.js, the last file that passed the check. */
+  /** <out>/script.json, the last script that passed the check; its code scenes are in <out>/scenes. */
   file: string;
-  /** Whether the model saw that file's frames and approved it; false when the review failed or the rounds ran out. */
+  /** Whether the model saw that script's stills and approved it; false when the review failed or the rounds ran out. */
   reviewed: boolean;
 }>;
