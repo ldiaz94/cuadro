@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { render } from '../src/render.js';
+import { ffmpeg, render } from '../src/render.js';
 
 const root = new URL('..', import.meta.url).pathname;
 const dir = mkdtempSync(join(tmpdir(), 'cuadro-'));
@@ -55,4 +55,11 @@ test('a clip whose numbers are not numbers fails the render, and writes nothing'
   const out = join(dir, 'g.mp4');
   await assert.rejects(render({ page: join(root, 'test/bad-clip.html'), root, out }), /bad audio clip.*volume/);
   assert.equal(existsSync(out), false);
+});
+
+test('ffmpeg that runs past the video end, or stalls, is killed with an error', async () => {
+  const endless = ['-loglevel', 'error', '-f', 'lavfi', '-i', 'anullsrc', '-f', 'null', '-']; // no -t: never ends
+  await assert.rejects(ffmpeg(endless, 1).end(), /ran past the end/);
+  const idle = ['-loglevel', 'error', '-listen_timeout', '-1', '-i', 'tcp://127.0.0.1:47123?listen=1', '-f', 'null', '-']; // waits for a peer that never comes
+  await assert.rejects(ffmpeg(idle, 1, 500).end(), /no progress/);
 });

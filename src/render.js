@@ -7,6 +7,7 @@
 // given as `audio`, which plays from frame 0. It pads or cuts the mix to
 // the video's length, encodes AAC, and muxes it with the video copied as
 // it is. With no clips and no soundtrack the mp4 has no audio stream.
+// Both ffmpeg runs are watched: one that stalls or runs past the video's end is killed and fails the render.
 // The page's numbers are checked before they reach ffmpeg's filter graph.
 // A page error, or a step in the page that takes over 30 s, fails it.
 // Depends on playwright-core (through chromium.js), serve.js, and ffmpeg
@@ -15,12 +16,19 @@
 import { spawn } from 'node:child_process';
 import { copyFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { createInterface } from 'node:readline';
 import { join, relative, resolve, sep } from 'node:path';
 import { StepTimeout, launch, within } from './chromium.js';
 import { serve } from './serve.js';
 
 /** The rate the clips are resampled to before mixing, in samples a second. */
 const SampleRate = 48000;
+
+/** How long ffmpeg's output may stand still before it is killed, in seconds: well over a slow frame (StepTimeout), well under a hang. */
+const StallSeconds = 60;
+
+/** How far past the video's length ffmpeg's output may run before it is killed, in seconds. */
+const OverrunSeconds = 1;
 
 /** Renders page (a file under root) to out; onProgress(done, total) after each frame. */
 export async function render({ page, out, props, audio, root = '.', onProgress = () => {} }) {
@@ -47,7 +55,7 @@ export async function render({ page, out, props, audio, root = '.', onProgress =
       '-loglevel', 'error', '-y',
       '-f', 'image2pipe', '-framerate', String(fps), '-i', '-',
       '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-t', String(duration), video,
-    ]);
+    ], duration);
     for (let n = 0; n < durationInFrames; n++) {
       await step(tab.evaluate((n) => window.cuadro.setFrame(n), n), `setFrame(${n})`);
       await encoder.write(await tab.screenshot({ clip: { x: 0, y: 0, width, height } }));
@@ -118,18 +126,35 @@ async function mix(video, clips, fps, duration, out) {
     '-filter_complex', [...chains, sum].join(';'),
     '-map', '0:v', '-map', '[mix]', '-c:v', 'copy', '-c:a', 'aac', '-movflags', '+faststart',
     '-t', String(duration), out,
-  ]).end();
+  ], duration).end();
 }
 
-/** Starts ffmpeg, reading frames (if any) on stdin; write() respects backpressure, end() waits for it. */
-function ffmpeg(args) {
-  const child = spawn('ffmpeg', args, { stdio: ['pipe', 'ignore', 'pipe'] });
+/**
+ * Starts ffmpeg, reading frames (if any) on stdin; write() respects backpressure, end() waits for it.
+ * A watchdog on ffmpeg's -progress report kills it, and fails end() and write(), when its output
+ * stops growing for stallMs, or passes duration (seconds) by more than OverrunSeconds.
+ */
+export function ffmpeg(args, duration, stallMs = StallSeconds * 1000) {
+  const child = spawn('ffmpeg', ['-nostats', '-progress', 'pipe:3', ...args], { stdio: ['pipe', 'ignore', 'pipe', 'pipe'] });
   let log = '';
   child.stderr.on('data', (d) => (log += d));
+  let abort, moved = Date.now(), reached = -1;
   const done = new Promise((ok, fail) => {
+    abort = (message) => { child.kill(); fail(new Error(`cuadro: ${message}`)); };
     child.on('error', (e) => fail(new Error(`cuadro: cannot run ffmpeg: ${e.message}`)));
     child.on('close', (code) => (code === 0 ? ok() : fail(new Error(`cuadro: ffmpeg failed (exit ${code}):\n${log}`))));
   });
+  createInterface({ input: child.stdio[3] }).on('line', (line) => {
+    const us = /^out_time_us=(\d+)$/.exec(line)?.[1]; // "N/A" or negative before the first packet
+    if (us === undefined || us / 1e6 <= reached) return;
+    reached = us / 1e6;
+    moved = Date.now();
+    if (reached > duration + OverrunSeconds) abort('ffmpeg ran past the end of the video');
+  });
+  const watch = setInterval(() => {
+    if (Date.now() - moved > stallMs) abort(`ffmpeg made no progress for ${stallMs / 1000} s`);
+  }, Math.min(1000, stallMs / 4));
+  done.then(() => clearInterval(watch), () => clearInterval(watch));
   child.stdin.on('error', () => {}); // a dead ffmpeg is reported by `done`
   return {
     write: (png) => Promise.race([done, new Promise((ok) => (child.stdin.write(png) ? ok() : child.stdin.once('drain', ok)))]),
