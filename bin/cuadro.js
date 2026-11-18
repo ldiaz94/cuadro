@@ -120,7 +120,7 @@ async function runMake() {
       prompt: positionals[1], provider: values.provider, model: values.model, baseUrl: values['base-url'], out: values.out, rounds,
       voiceProvider: values['voice-provider'], voice: values.voice, onStep: (m) => console.error(m),
     });
-    console.error(`preview: serve this folder (npx serve . or python3 -m http.server) and open /${relative('.', page)}`);
+    console.error(`preview: serve this folder with byte ranges (npx serve .) and open /${relative('.', page)}`);
     console.error(`render:  npx cuadro render ${page} out.mp4`);
   } catch (e) {
     console.error(e.message);

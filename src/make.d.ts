@@ -10,7 +10,7 @@ export function make(options: {
   model?: string;
   /** Overrides the provider's API address. */
   baseUrl?: string;
-  /** The output folder, under root (default: "make-out"). */
+  /** The output folder, inside root and not root itself (default: "make-out"). */
   out?: string;
   /** How many revisions after the first draft, at most (default: 3). */
   rounds?: number;

@@ -16,7 +16,7 @@ like Remotion, but on spark instead of React, written from scratch.
 picture frame with a face, film sprocket holes along its bottom edge, and
 a spark in its corner.
 
-> **Status: experimental (0.1).** The API may change. cuadro is not on
+> **Status: experimental (0.3).** The API may change. cuadro is not on
 > npm, and nobody outside the project has reviewed it yet.
 
 ## See it
@@ -29,13 +29,13 @@ by [`demo/music.js`](demo/music.js), so it is free to use.
 
 ## Get it
 
-You need Node 20 or newer, ffmpeg with libx264 on the `PATH`, and
+You need Node 20.6 or newer, ffmpeg with libx264 on the `PATH`, and
 Chromium. cuadro uses `$CHROMIUM` if it is set, then Playwright's own
 browser (`npx playwright install chromium`), then `chromium` on the
 `PATH`.
 
 ```sh
-npm install github:ldiaz94/cuadro#v0.1.0
+npm install github:ldiaz94/cuadro#v0.3.0
 npx cuadro render video.html out.mp4
 ```
 
@@ -71,8 +71,11 @@ a hole: `(frame) => html`...``. You pass `frame` down yourself, because
 spark has no context. `sequence` and `series` take views and return
 views, so they nest. Inside a sequence, the frame counts from 0.
 
-To preview, serve the project folder with any static server (`npx serve
-.` or `python3 -m http.server`) and open the page. To render it, run:
+To preview, serve the project folder with a static server that answers
+byte-range requests, such as `npx serve .`, and open the page. The
+browser seeks audio only in files served that way: with `python3 -m
+http.server` the picture scrubs but the sound cannot follow. To render
+it, run:
 
 ```sh
 npx cuadro render video.html out.mp4 --props '{"color":"teal"}' --audio song.mp3
@@ -161,13 +164,18 @@ ANTHROPIC_API_KEY=... npx cuadro make "a ten-second title card for a bakery" --p
 
 The model gets cuadro's types and this guide, and replies with a whole
 `video.js`. cuadro writes it, with an `index.html`, into `--out` (default
-`make-out`, which must be under the working directory), and opens it in
-Chromium. A page error, a failed frame, or five sample frames that are
-all the same go back to the model to fix. A file that runs is sent back
-as five screenshots for review: the model answers `OK` or a better file.
-It stops at `OK` or after `--rounds` revisions (default 3), and keeps the
-last file that ran. Progress goes to stderr; at the end it says how to
-preview and render the result.
+`make-out`, a folder inside the working directory), and opens it in
+Chromium. A page error, a failed frame, or a step that takes over 30
+seconds goes back to the model to fix. A file that runs is sent back as
+five screenshots for review, with a note if they are all the same: the
+model answers `OK` or a better file. It stops at `OK` or after `--rounds`
+revisions (default 3), and keeps the last file that ran, also when a
+later reply or request fails. Progress goes to stderr; at the end it says
+how to preview and render the result.
+
+The model's code runs on your machine, so the check keeps it in a small
+box: cuadro's server hands the page only the output folder, cuadro and
+spark, and the tab may not load anything from another origin.
 
 | `--provider` | key from the environment | default model |
 |---|---|---|
@@ -175,11 +183,12 @@ preview and render the result.
 | `gemini` | `GEMINI_API_KEY` | `gemini-4-hydrogen` |
 | `openai` | `OPENAI_API_KEY`; for another server, `OPENAI_BASE_URL` and `OPENAI_COMPAT_API_KEY` (optional) | `gpt-6.2-astra` |
 
-`--model` picks another model. With `--voice-provider p` (and
-`--voice v`), the model first writes a narration script, `cuadro voice`
+`--model` picks another model and `--base-url` another server. With
+`--voice-provider p` (and `--voice v`), the model first writes a narration script, `cuadro voice`
 speaks it into `<out>/voice`, and the video's scenes follow the lines'
-lengths. From Node, `make({ prompt, provider, model, out, rounds,
-voiceProvider, voice, onStep })` in `cuadro/make` does the same.
+lengths. From Node, `make({ prompt, provider, model, baseUrl, out, rounds,
+root, voiceProvider, voice, timeout, onStep })` in `cuadro/make` does the
+same.
 
 The result is a source file: read it, edit it and commit it like any
 other video. Every round is a paid request to the provider, and
@@ -223,9 +232,11 @@ Eight ideas, a module each:
    cuadro serves the root directory on a loopback port, opens the page at
    the composition's size, and loops over the frames: `setFrame(n)`, take
    a PNG screenshot, write it to ffmpeg's stdin. Writes wait when the
-   pipe is full, and a page error or a failed image stops the render
-   instead of hanging it. The frames go to a temporary video file. A
-   second ffmpeg run then mixes the clips, each delayed to its `from` and
+   pipe is full, and a page error, a failed image or a step that takes
+   over 30 seconds stops the render instead of hanging it. The frames go
+   to a temporary video file. A second ffmpeg run then mixes the clips
+   (whose numbers are checked first, since they go into ffmpeg's filter
+   graph), each delayed to its `from` and
    cut at its `until`, with `--audio` as one more clip at frame 0, and
    muxes the mix with the video copied as it is.
    [`bin/cuadro.js`](bin/cuadro.js) parses the command line and shows
@@ -233,18 +244,20 @@ Eight ideas, a module each:
 7. **Narration is a cache** ([`src/voice.js`](src/voice.js), with
    [`src/speech.js`](src/speech.js) and [`src/http.js`](src/http.js)).
    Each provider is a small `fetch` adapter that turns text into audio
-   bytes, with its key read from the environment. `post()` adds a timeout
-   and retries on 429, 5xx and network errors, and its errors quote the
-   API's message but never a header. `voice()` hashes provider, voice,
-   model and text for each line and skips the lines whose hash and file
-   are unchanged.
+   bytes, with its key read from the environment. `post()` and `get()`
+   add a timeout and retry on 429, 5xx and network errors (waiting at
+   most a minute), and their errors quote the API's message but never a
+   header. `voice()` hashes provider, API address, voice, model and text
+   for each line and skips the lines whose hash and file are unchanged.
 8. **A prompt is a loop** ([`src/make.js`](src/make.js), with
    [`src/llm.js`](src/llm.js)). Each provider is a small `fetch` adapter
    that sends a conversation, with screenshots as PNG images, and returns
    the reply's text. `make()` keeps the whole conversation: it writes
-   the model's `video.js`, opens it in Chromium, shoots five frames, and
-   sends back either the problem or the frames for review, until the
-   model says `OK` or the rounds run out.
+   the model's `video.js`, opens it in Chromium (on a server limited to
+   the output folder and the two libraries, in a tab that may reach no
+   other origin), shoots five frames, and sends back either the problem
+   or the frames for review, until the model says `OK` or the rounds run
+   out. Once a file has passed, a later failure falls back to it.
 
 ## Tests
 
@@ -264,25 +277,34 @@ others run in Chromium and ffmpeg against
   preview's keys, scrubber and play button work.
 - narration, against a fake local server (no test calls a real API): retry
   on 429 then success, giving up, and errors that show the API's message
-  but not the key; each provider's URL, auth header and body; Gemini's PCM
+  but not the key; each provider's URL, auth header and body; OpenAI's key
+  never sent to another host; Qwen's download retried; Gemini's PCM
   wrapped as a valid WAV; a missing key; lines written, voice.json correct,
-  an unchanged script making no requests, and one edited line spoken alone.
+  an unchanged script making no requests, one edited line spoken alone,
+  and another voice or API address speaking every line again.
 - render: every frame comes out at the right size; the same props give
   identical frame checksums twice, and other props give different ones;
   audio is padded to the video's length; a page error or a broken image
-  fails the render.
+  fails the render; a clip whose volume is not a number fails it before
+  ffmpeg runs, and writes nothing.
 - audio, against [`test/audio.html`](test/audio.html): two clips are
   heard from their frames until their sequence or file ends (measured by
   detecting silence in the mix); a clip in a sequence never reached is
   never heard; `--audio` plays together with the clips; the same input
   gives the same decoded audio twice; in the preview, a clip is an
-  `<audio>` element while it is mounted, and seeks with the scrubber.
+  `<audio>` element while it is mounted, and seeks with the scrubber, and
+  play at the last frame goes back to frame 0 first.
 - make, against a fake model (no test calls a real API): each provider's
   URL, headers and body, with images before the text; Anthropic's
   refusal and cut-off replies; an error that leaves out the key; a file
   that throws sent back with its error, then a working file and `OK`
   (three requests, the working file kept); a reply with no `js` block;
-  narration spoken from the model's script, its voice.json handed back.
+  `out` outside the root, or the root itself, refused; after a passed
+  file, a failed fix and an API error leave the passed file; a still
+  video passes with a note; a page that fetches `/package.json` gets a
+  404 and one that fetches another origin is blocked; a frame that loops
+  forever comes back as a timeout; narration spoken from the model's
+  script, its voice.json handed back.
 
 `npm run types` type-checks the declarations against
 [`test/types.ts`](test/types.ts).
@@ -297,18 +319,18 @@ Lines of code, not counting comments or blank lines:
 | `src/timeline.js` | 20 |
 | `src/composition.js` | 41 |
 | `src/audio.js` | 36 |
-| `src/preview.js` | 46 |
-| `src/render.js` | 95 |
-| `src/serve.js` | 32 |
-| `src/chromium.js` | 19 |
+| `src/preview.js` | 50 |
+| `src/render.js` | 113 |
+| `src/serve.js` | 33 |
+| `src/chromium.js` | 29 |
 | `src/index.js` | 5 |
-| `src/http.js` | 33 |
-| `src/speech.js` | 91 |
+| `src/http.js` | 55 |
+| `src/speech.js` | 89 |
 | `src/voice.js` | 59 |
-| `src/llm.js` | 95 |
-| `src/make.js` | 179 |
-| `bin/cuadro.js` | 113 |
-| **total** | **925** |
+| `src/llm.js` | 94 |
+| `src/make.js` | 215 |
+| `bin/cuadro.js` | 117 |
+| **total** | **1017** |
 
 The only dependencies are spark and playwright-core, plus ffmpeg from
 the system.
