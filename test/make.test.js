@@ -153,6 +153,20 @@ test('make: a reply without a js block is a clear error', async (t) => {
   await assert.rejects(make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out }), /without a ```js block/);
 });
 
+test('make: the page may read only its folder and the libraries, and nothing from the network', async (t) => {
+  process.env.ANTHROPIC_API_KEY = 'ka';
+  const out = await folder(t);
+  const prying = `const status = (url) => fetch(url).then((r) => r.status, () => 'blocked');
+const found = [await status('/package.json'), await status('https://example.com/'), await status('./index.html')];
+throw new Error('fetched ' + found.join(' '));
+`;
+  const s = await fakeServer([said('```js\n' + prying + '```'), said('```js\n' + working + '```'), said('OK')]);
+  t.after(() => s.close());
+  await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out });
+  const problem = JSON.parse(s.requests[1].body).messages.at(-1).content.at(-1).text;
+  assert.match(problem, /fetched 404 blocked 200/);
+});
+
 test('make: narration speaks the script and hands voice.json to the model', async (t) => {
   process.env.ANTHROPIC_API_KEY = 'ka';
   const out = await folder(t);

@@ -8,6 +8,8 @@
 // the model as five frames, for one review: it replies OK, or a better
 // file, which is checked again. It stops at OK or after `rounds`
 // revisions, and keeps the last file that passed.
+// The model's code runs in a tab that may load only from cuadro's server,
+// which serves only the output folder and the two libraries.
 // With a voice provider it first asks for a narration script, speaks it
 // with voice.js, and has the video follow the lines' lengths.
 // Depends on llm.js, voice.js, serve.js and chromium.js. Leaves out
@@ -15,7 +17,7 @@
 // video.js, and any check of how good the video looks beyond the review.
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { launch } from './chromium.js';
 import { chat } from './llm.js';
 import { serve } from './serve.js';
@@ -28,7 +30,8 @@ export async function make({
 }) {
   if (relative(resolve(root), resolve(out)).split(sep)[0] === '..') throw new Error(`cuadro: ${out} is not under ${root}`);
   await mkdir(out, { recursive: true });
-  await writeFile(join(out, 'index.html'), await page(root));
+  const libs = await libraries(root);
+  await writeFile(join(out, 'index.html'), page(libs));
   const system = await context();
   const messages = [];
   const ask = async () => {
@@ -46,7 +49,7 @@ export async function make({
     if (reviewing && !source && /^\s*OK\b/.test(reply)) break;
     if (!source) throw new Error('cuadro: the model replied without a ```js block holding video.js');
     await writeFile(join(out, 'video.js'), source);
-    const result = await check(root, join(out, 'index.html'));
+    const result = await check(root, out, libs);
     problem = result.problem;
     reviewing = !problem;
     if (reviewing) passed = source;
@@ -157,13 +160,18 @@ function review(frames) {
 Otherwise reply with the whole corrected video.js in one \`\`\`js block.`;
 }
 
-/** index.html: an import map for cuadro and spark, and video.js. */
-async function page(root) {
+/** Where cuadro's and spark's entry modules are, as paths under root. */
+async function libraries(root) {
   let cuadro;
-  if (existsSync(join(root, 'node_modules', 'cuadro'))) cuadro = '/node_modules/cuadro/src/index.js';
-  else if (await packageName(root) === 'cuadro') cuadro = '/src/index.js';
+  if (existsSync(join(root, 'node_modules', 'cuadro'))) cuadro = 'node_modules/cuadro/src/index.js';
+  else if (await packageName(root) === 'cuadro') cuadro = 'src/index.js';
   else throw new Error(`cuadro: cuadro is not installed in ${resolve(root)}; run npm install cuadro there`);
-  const imports = { cuadro, spark: '/node_modules/spark/src/index.js' };
+  return { cuadro, spark: 'node_modules/spark/src/index.js' };
+}
+
+/** index.html: an import map for cuadro and spark, and video.js. */
+function page(libs) {
+  const imports = { cuadro: '/' + libs.cuadro, spark: '/' + libs.spark };
   return `<!doctype html>
 <meta charset="utf-8">
 <title>cuadro make</title>
@@ -184,17 +192,22 @@ async function packageName(root) {
 /** How long to wait for the page to call composition, in milliseconds. */
 const LoadTimeout = 10000;
 
-/** Opens the page and shoots five frames; resolves to { problem, shots, frames } (problem undefined if it passed). */
-async function check(root, file) {
-  const server = await serve(root);
+/**
+ * Opens out/index.html and shoots five frames; resolves to { problem, shots, frames } (problem undefined if it passed).
+ * The model's code runs here, so the server serves only out and the two libraries, and the tab may load
+ * nothing from any other origin.
+ */
+async function check(root, out, libs) {
+  const server = await serve(root, { allow: [relative(root, out), dirname(libs.cuadro), dirname(libs.spark)] });
   const browser = await launch();
   const errors = [];
   const shots = [];
   try {
     const tab = await browser.newPage();
+    await tab.route('**', (route) => (new URL(route.request().url()).origin === server.origin ? route.continue() : route.abort()));
     tab.on('pageerror', (e) => errors.push(`page error: ${e.message}`));
     tab.on('response', (r) => r.status() >= 400 && !r.url().endsWith('/favicon.ico') && errors.push(`HTTP ${r.status()} for ${r.url()}`));
-    const url = new URL(relative(resolve(root), resolve(file)).split(sep).join('/'), server.origin + '/');
+    const url = new URL(relative(resolve(root), resolve(out, 'index.html')).split(sep).join('/'), server.origin + '/');
     await tab.goto(`${url.href}?render`);
     if (errors.length) return { problem: errors.join('\n'), shots };
     const started = await tab.waitForFunction(() => window.cuadro, null, { timeout: LoadTimeout }).then(() => true, () => false);

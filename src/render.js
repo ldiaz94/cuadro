@@ -7,6 +7,7 @@
 // given as `audio`, which plays from frame 0. It pads or cuts the mix to
 // the video's length, encodes AAC, and muxes it with the video copied as
 // it is. With no clips and no soundtrack the mp4 has no audio stream.
+// The page's numbers are checked before they reach ffmpeg's filter graph.
 // Depends on playwright-core (through chromium.js), serve.js, and ffmpeg
 // on the PATH. Leaves out parallel rendering, other codecs and containers,
 // transparency, and clips served from anywhere but the root.
@@ -43,6 +44,9 @@ export async function render({ page, out, props, audio, root = '.', onProgress =
     await step(tab.waitForFunction(() => window.cuadro));
     const { width, height, fps, durationInFrames } = await tab.evaluate(() => window.cuadro);
     const duration = durationInFrames / fps;
+    if (![width, height, durationInFrames].every((n) => Number.isInteger(n) && n > 0) || !(Number.isFinite(fps) && fps > 0)) {
+      throw new Error('cuadro: width, height and durationInFrames must be whole numbers above 0, and fps a number above 0');
+    }
     if (width % 2 || height % 2) throw new Error('cuadro: width and height must be even for H.264');
     await tab.setViewportSize({ width, height });
 
@@ -59,7 +63,7 @@ export async function render({ page, out, props, audio, root = '.', onProgress =
     await encoder.end();
     encoder = null;
 
-    const clips = (await tab.evaluate(() => window.cuadro.clips)).map((c) => ({ ...c, file: fileOf(c.src, server.origin, root) }));
+    const clips = (await tab.evaluate(() => window.cuadro.clips)).map((c) => ({ ...checked(c), file: fileOf(c.src, server.origin, root) }));
     if (audio) clips.push({ file: audio, from: 0, volume: 1 });
     await mix(video, clips, fps, duration, out);
   } finally {
@@ -68,6 +72,16 @@ export async function render({ page, out, props, audio, root = '.', onProgress =
     await server.close();
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+/** A clip from the page, whose numbers go into ffmpeg's filter graph: anything but plain numbers is an error. */
+function checked(clip) {
+  const { from, until, volume } = clip;
+  const ok = Number.isInteger(from) && from >= 0
+    && (until === undefined || (Number.isInteger(until) && until > from))
+    && typeof volume === 'number' && Number.isFinite(volume) && volume >= 0;
+  if (!ok) throw new Error(`cuadro: bad audio clip ${JSON.stringify(clip)}: from must be a whole number >= 0, until a later one, volume a number >= 0`);
+  return { from, until, volume };
 }
 
 /** Maps a clip's URL to its file under root; a clip from elsewhere is an error. */

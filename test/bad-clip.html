@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset="utf-8">
+<script type="importmap">{ "imports": { "spark": "/node_modules/spark/src/index.js", "cuadro": "/src/index.js" } }</script>
+<script type="module">
+  // Two frames, and a clip whose volume tries to add a filter to ffmpeg's
+  // graph: the render must refuse it.
+  import { composition, html } from 'cuadro';
+  const { clips } = composition({ width: 64, height: 48, fps: 12, durationInFrames: 2, view: () => html`<div></div>` });
+  clips.push({ src: new URL('/test/dot.svg', location.href).href, from: 0, volume: '1[evil];sine[x' });
+</script>

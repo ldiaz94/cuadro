@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { render } from '../src/render.js';
@@ -49,4 +49,10 @@ test('audio is muxed and fitted to the video length', async () => {
 test('a page error or a broken image fails the render', async () => {
   await assert.rejects(run('e.mp4', { boom: true }), /page error: boom/);
   await assert.rejects(run('f.mp4', { image: '/test/missing.png' }), /image failed to load/);
+});
+
+test('a clip whose numbers are not numbers fails the render, and writes nothing', async () => {
+  const out = join(dir, 'g.mp4');
+  await assert.rejects(render({ page: join(root, 'test/bad-clip.html'), root, out }), /bad audio clip.*volume/);
+  assert.equal(existsSync(out), false);
 });
