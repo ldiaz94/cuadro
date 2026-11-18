@@ -290,3 +290,49 @@ test('make: the logo, brand colours and music are copied in and set over what th
   assert.match(lastText(s, 0), /cuadro sets these fields itself, so keep them: .*"music":"music.wav".*The endCard shows the logo/);
   assert.equal(result.reviewed, true);
 });
+
+/** A review reply: numbered defects, then a corrected script and the box scene. */
+const defects = (list, json = script) => said(list.map((d, i) => `${i + 1}. ${d}`).join('\n') + '\n```json\n' + json + '\n```\n```js scenes/box.js\n' + box + '```');
+
+test('make: a review that repeats the last one\'s defects stops, unreviewed', async (t) => {
+  process.env.ANTHROPIC_API_KEY = 'ka';
+  const out = await folder(t);
+  const s = await fakeServer([
+    reply(script, { 'scenes/box.js': box }),
+    defects(['Scene 1: the title is too small.', 'Scene 3: the end card is empty.']),
+    defects(['Scene 3: the end card looks empty.', 'Scene 1: title too small.']),
+    said('OK'),
+  ]);
+  t.after(() => s.close());
+  const steps = [];
+  const result = await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out, onStep: (m) => steps.push(m) });
+  assert.equal(s.requests.length, 3);
+  assert.match(lastText(s, 1), /numbered list of the\ndefects/);
+  assert.equal(steps.at(-2), 'round 3: the review lists the same defects as the last one; stopping');
+  assert.equal(result.reviewed, false);
+});
+
+test('make: new defects every review run out the rounds, unreviewed', async (t) => {
+  process.env.ANTHROPIC_API_KEY = 'ka';
+  const out = await folder(t);
+  const s = await fakeServer([
+    reply(script, { 'scenes/box.js': box }),
+    defects(['Scene 1: the title is too small.']),
+    defects(['Scene 2: the box leaves the frame.']),
+    said('OK'),
+  ]);
+  t.after(() => s.close());
+  const result = await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out, rounds: 2 });
+  assert.equal(s.requests.length, 3);
+  assert.equal(result.reviewed, false);
+});
+
+test('make: a bold OK after defects approves', async (t) => {
+  process.env.ANTHROPIC_API_KEY = 'ka';
+  const out = await folder(t);
+  const s = await fakeServer([reply(script, { 'scenes/box.js': box }), defects(['Scene 1: the title is too small.']), said('**OK**')]);
+  t.after(() => s.close());
+  const result = await make({ prompt: 'x', provider: 'anthropic', baseUrl: s.url, out });
+  assert.equal(s.requests.length, 3);
+  assert.equal(result.reviewed, true);
+});

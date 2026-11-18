@@ -12,10 +12,12 @@
 // failed setFrame, or a step that takes too long sends the problem (and
 // the frames) back for a fix. A script that passes is shown to the model
 // as stills (one per designed scene, three per code scene) for review:
-// it replies OK, or a better script, which is checked again. A review request that fails is asked
-// once more. It stops at OK or after `rounds` revisions, and keeps the last
-// script that passed, also when a later reply or request fails; the result
-// says whether the model approved it.
+// it replies OK, or a numbered list of the defects a viewer would notice
+// and a better script, which is checked again. A review request that fails
+// is asked once more. It stops at OK, when a review lists the same defects
+// as the one before, or after `rounds` revisions, and keeps the last script
+// that passed, also when a later reply or request fails; the result says
+// whether the model approved it with an OK.
 // The model's code runs in a tab that may load only from cuadro's server,
 // which serves only the output folder and the two libraries.
 // Depends on llm.js, script.js, voice.js, serve.js and chromium.js. Leaves
@@ -123,19 +125,28 @@ function parse(json, given) {
  * Has the model write, fix and review the script until it approves or the rounds run out; resolves
  * to { passed, reviewed }: the last draft that passed the check, and whether the model approved it.
  * A draft is { script, modules }: the JSON text and every code scene written so far, by path, so a
- * reply may leave out the modules it does not change. Once one has passed, any later failure (a reply
+ * reply may leave out the modules it does not change. A review that repeats the last one's defects
+ * ends the loop unreviewed. Once one has passed, any later failure (a reply
  * without a script, a network error) stops the loop with that draft instead of losing it.
  */
 async function revise({ ask, messages, rounds, attempt, provider, onStep }) {
-  let passed, problem, reviewing = false, reviewed = false, modules = {};
+  let passed, problem, reviewing = false, reviewed = false, modules = {}, defects = [];
   try {
     for (let round = 1; round <= rounds + 1; round++) {
       onStep(`round ${round}: asking ${provider}…`);
       const reply = reviewing ? await twice(ask, (e) => onStep(`round ${round}: ${e.message.split('\n')[0]}; asking again`)) : await ask();
       const script = block(reply);
-      if (reviewing && !script && approves(reply)) {
-        reviewed = true;
-        break;
+      if (reviewing) {
+        if (!script && approves(reply)) {
+          reviewed = true;
+          break;
+        }
+        const found = listed(reply);
+        if (repeats(found, defects)) {
+          onStep(`round ${round}: the review lists the same defects as the last one; stopping`);
+          break;
+        }
+        defects = found;
       }
       if (!script) throw new Error('cuadro: the model replied without a ```json block holding script.json');
       modules = { ...modules, ...codeBlocks(reply) };
@@ -165,10 +176,26 @@ async function twice(request, retrying) {
   }
 }
 
-/** Whether a review reply approves: no code block, and the word OK at its start or its end. */
+/** Whether a review reply approves: no code block, and the word OK (bold or not) at its start or its end. */
 function approves(reply) {
-  const text = reply.trim();
+  const text = reply.replace(/[*_]/g, '').trim();
   return !text.includes('```') && (/^OK\b/.test(text) || /\bOK[.!]?$/.test(text));
+}
+
+/** The numbered defects a review lists before its first code block. */
+function listed(reply) {
+  return [...reply.split('```')[0].matchAll(/^\s*\d+[.)]\s+(.+)$/gm)].map((m) => m[1]);
+}
+
+/** Whether a review's defects are all in the last review's, give or take the wording: each shares half its words with one there. */
+function repeats(now, before) {
+  const words = (s) => new Set(s.toLowerCase().match(/[a-z0-9]+/g));
+  const alike = (a, b) => {
+    const x = words(a), y = words(b);
+    const shared = [...x].filter((w) => y.has(w)).length;
+    return shared / (x.size + y.size - shared) >= 0.5;
+  };
+  return now.length > 0 && before.length > 0 && now.every((d) => before.some((b) => alike(d, b)));
 }
 
 /** The contents of the first ```json block in a reply, or undefined. */
@@ -328,10 +355,12 @@ function fix(problem) {
 /** The user message after a passed check, sent with the stills. */
 function review(frames) {
   return `It runs. These are stills at frames ${frames.join(', ')}: one per designed scene, three per code scene.
-Look for text that is cut off, overlaps or is too small, empty or unbalanced frames, and code scenes
-that don't show their idea clearly. If the video matches the request and looks finished, reply with
-just OK. Otherwise reply with the whole corrected script.json in one \`\`\`json block, and any code
-scene you change.`;
+Review them as a viewer would. A defect is something a viewer would notice: text cut off,
+overlapping or too small to read, an empty or lopsided frame, a code scene whose idea does not come
+across, a wrong fact, or a layout repeated so the video drags. Taste, wording and small polish are
+not defects. If there are none, reply with just OK. Otherwise reply with a numbered list of the
+defects, one per line, each naming its scene and what is wrong, then the whole corrected
+script.json in one \`\`\`json block and any code scene you change.`;
 }
 
 /** Where cuadro's and spark's entry modules are, as paths under root: the copies this module itself runs with. */
