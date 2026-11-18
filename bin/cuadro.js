@@ -23,7 +23,7 @@ const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audi
                    [--fps n]
        cuadro make "<prompt>" --provider p [--model m] [--out dir] [--rounds n] [--base-url url]
                    [--voice-provider p [--voice v]] [--logo file] [--brand "#hex[,#hex]"]
-                   [--music file] [--language lang] [--format 16:9|9:16]
+                   [--music file] [--language lang] [--format 16:9|9:16] [--captions]
        cuadro translate <script.json> --to lang --provider p [--model m] [--base-url url]
 
   --props json   props merged over the composition's defaults
@@ -55,7 +55,8 @@ const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audi
   --music file   music under the narration, cut or padded to the video's length
   --language l   the video's language, a BCP-47 code (es, pt-BR, ja): narration and screen text
   --format f     16:9 (default) or 9:16, a portrait video
-  The logo, colours, music, language and format are set in the script whatever the model writes.
+  --captions     show the narration as captions, and write an .srt beside the render
+  The logo, colours, music, language, format and captions are set in the script whatever the model writes.
   It exits 3 when the script passed the check but the model did not approve it.
 
   translate writes <script>.<lang>.json beside the script, with its say lines and screen text
@@ -75,7 +76,7 @@ try {
       out: { type: 'string' }, 'base-url': { type: 'string' },
       rounds: { type: 'string' }, fps: { type: 'string' }, 'voice-provider': { type: 'string' },
       logo: { type: 'string' }, brand: { type: 'string' }, music: { type: 'string' }, language: { type: 'string' }, to: { type: 'string' },
-      format: { type: 'string' },
+      format: { type: 'string' }, captions: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -177,7 +178,7 @@ async function runMake() {
     const { page, reviewed } = await make({
       prompt: positionals[1], provider: values.provider, model: values.model, baseUrl: values['base-url'], out: values.out, rounds,
       voiceProvider: values['voice-provider'], voice: values.voice, logo: values.logo, music: values.music, language: values.language,
-      format: values.format,
+      format: values.format, captions: values.captions,
       brand: values.brand && { accent, ...(accent2 && { accent2 }) }, onStep: (m) => console.error(m),
     });
     console.error(`preview: serve this folder with byte ranges (npx serve .) and open /${relative('.', page)}`);

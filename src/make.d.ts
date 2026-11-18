@@ -30,6 +30,8 @@ export function make(options: {
   language?: string;
   /** The frame's shape, "16:9" (the default) or "9:16" for a portrait video, set in every draft. */
   format?: '16:9' | '9:16';
+  /** Show the narration as captions (the script's captions: true), set in every draft. */
+  captions?: boolean;
   /** How long one step in Chromium may take, in milliseconds (default: 30000); a slower one is a problem sent to the model. */
   timeout?: number;
   /** Called with each progress message. */

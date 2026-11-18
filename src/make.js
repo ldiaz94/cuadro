@@ -9,7 +9,7 @@
 // every draft, so the model cannot drop them; so are a language, in which
 // the model writes the narration and the text on screen, and a format (9:16
 // asks for a portrait video, and the prompt tells the model its stage's
-// size). cuadro checks the script
+// size), and captions. cuadro checks the script
 // against its schema, writes it beside an index.html that runs the player
 // in the output folder, speaks its `say` lines if there is a voice
 // provider, and opens it in Chromium. A schema error, a page error, a
@@ -42,7 +42,7 @@ import { voice } from './voice.js';
 /** Makes <out>/script.json, its code scenes and <out>/index.html from prompt; onStep(message) reports progress. */
 export async function make({
   prompt, provider, model, baseUrl, out = 'make-out', rounds = 3, root = process.cwd(),
-  voiceProvider, voice: voiceName, logo, brand, music, language, format, timeout = StepTimeout, onStep = () => {},
+  voiceProvider, voice: voiceName, logo, brand, music, language, format, captions, timeout = StepTimeout, onStep = () => {},
 }) {
   if (!inside(root, out)) throw new Error(`cuadro: ${out} must be a folder inside ${resolve(root)}`);
   const libs = libraries(root);
@@ -52,6 +52,7 @@ export async function make({
     ...(await assets(out, { logo, brand, music })),
     ...(language && { language: Intl.getCanonicalLocales(language)[0] }),
     ...(format && { format }),
+    ...(captions && { captions: true }),
   };
   await writeFile(join(out, 'index.html'), page(libs, Boolean(voiceProvider)));
   const system = await context(format ?? '16:9');
@@ -125,6 +126,7 @@ function parse(json, given) {
       if (given.music) script.music = given.music;
       if (given.language) script.language = given.language;
       if (given.format) script.format = given.format;
+      if (given.captions) script.captions = true;
     }
     return checkScript(script);
   } catch (e) {

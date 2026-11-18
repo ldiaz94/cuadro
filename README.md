@@ -373,7 +373,8 @@ so the model cannot drop them. The end card shows the logo.
 `--language es` has the model write the lines and the text on screen in
 that language, and sets the script's `language`, so the voice gets it
 too. `--format 9:16` asks for a portrait video: the script gets that
-format, and the model is told its stage is 720×1280.
+format, and the model is told its stage is 720×1280. `--captions` sets
+`captions: true`.
 
 The model's code runs on your machine, so the check keeps it in a small
 box: cuadro's server hands the page only the output folder, cuadro and
@@ -390,7 +391,7 @@ spark, and the tab may not load anything from another origin.
 lines into `<out>/voice` on every round (unchanged lines are not spoken
 again), so the scenes follow the lines' lengths. From Node, `make({
 prompt, provider, model, baseUrl, out, rounds, root, voiceProvider,
-voice, logo, brand: { accent, accent2 }, music, language, format, timeout, onStep })` in `cuadro/make` does the same, and resolves
+voice, logo, brand: { accent, accent2 }, music, language, format, captions, timeout, onStep })` in `cuadro/make` does the same, and resolves
 to `{ page, file, reviewed }`, `file` being `script.json`.
 
 The result is a script: read it, edit it and commit it like any other.
