@@ -1,11 +1,15 @@
 // cuadro voice: turns a script of lines into one audio file per line, and a
-// voice.json listing them with their lengths.
+// voice.json listing them with their lengths and loudness.
 // The script is { "lines": [{ "id", "text" }] }. Line <id> becomes
-// <out>/<id>.<ext>, and <out>/voice.json is { lines: [{ id, file, seconds,
-// hash }] }, where hash covers the provider, its API address, the voice,
-// the model and the text. A line whose hash and file are unchanged is not
-// spoken again, so editing one line costs one request.
-// Depends on speech.js and ffprobe (from ffmpeg) on the PATH. Leaves out
+// <out>/<id>.<ext>, and <out>/voice.json is { fps, lines: [{ id, file,
+// seconds, hash, levels }] }, where hash covers the provider, its API
+// address, the voice, the model and the text. levels is the line's loudness,
+// one number from 0 to 1 per video frame (ceil(seconds * fps) of them, 2
+// decimals, the loudest frame of the line being 1), so a scene can move to
+// the narration (see level.js). A line whose hash and file are unchanged is
+// not spoken again, so editing one line costs one request; it only gets its
+// levels redone if they are missing or were made for another fps.
+// Depends on speech.js, and ffprobe and ffmpeg on the PATH. Leaves out
 // deleting the files of lines removed from the script.
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -15,30 +19,33 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { address, defaults, speak } from './speech.js';
 
-/** Speaks every line of the script into out; onLine({ id, index, total, skipped }) after each. */
-export async function voice({ script, out = 'voice', provider, voice: voiceName, model, baseUrl, onLine = () => {} }) {
+/** Speaks every line of the script into out, with levels at fps; onLine({ id, index, total, skipped }) after each. */
+export async function voice({ script, out = 'voice', provider, voice: voiceName, model, baseUrl, fps = 30, onLine = () => {} }) {
   const { lines } = checked(JSON.parse(await readFile(script, 'utf8')));
   const chosen = { voice: voiceName ?? defaults[provider]?.voice, model: model ?? defaults[provider]?.model };
   await mkdir(out, { recursive: true });
-  const previous = new Map((await readManifest(out)).map((l) => [l.id, l]));
+  const { fps: oldFps, lines: oldLines } = await readManifest(out);
+  const previous = new Map(oldLines.map((l) => [l.id, l]));
   const manifest = [];
   for (const [index, { id, text }] of lines.entries()) {
     const hash = createHash('sha256').update([provider, address(provider, baseUrl), chosen.voice, chosen.model, text].join('\0')).digest('hex');
     const old = previous.get(id);
     const skipped = old?.hash === hash && existsSync(join(out, old.file));
     if (skipped) {
-      manifest.push(old);
+      const stale = !Array.isArray(old.levels) || oldFps !== fps;
+      manifest.push(stale ? { ...old, levels: await levels(join(out, old.file), old.seconds, fps) } : old);
     } else {
       const { bytes, ext } = await speak({ provider, text, baseUrl, ...chosen });
       const file = `${id}.${ext}`;
       await writeFile(join(out, file), bytes);
-      manifest.push({ id, file, seconds: await duration(join(out, file)), hash });
+      const seconds = await duration(join(out, file));
+      manifest.push({ id, file, seconds, hash, levels: await levels(join(out, file), seconds, fps) });
     }
     // Saved after every line, so a failure later keeps the work done.
-    await writeFile(join(out, 'voice.json'), JSON.stringify({ lines: manifest }, null, 2) + '\n');
+    await writeFile(join(out, 'voice.json'), JSON.stringify({ fps, lines: manifest }, null, 2) + '\n');
     onLine({ id, index, total: lines.length, skipped });
   }
-  return { lines: manifest };
+  return { fps, lines: manifest };
 }
 
 /** The script's lines, or an error if the script is malformed. */
@@ -54,13 +61,33 @@ function checked(script) {
   return script;
 }
 
-/** The lines of out/voice.json, or none if it is missing or unreadable. */
+/** The fps and lines of out/voice.json, or no lines if it is missing or unreadable. */
 async function readManifest(out) {
   try {
-    return JSON.parse(await readFile(join(out, 'voice.json'), 'utf8')).lines;
+    const { fps, lines } = JSON.parse(await readFile(join(out, 'voice.json'), 'utf8'));
+    return { fps, lines: Array.isArray(lines) ? lines : [] };
   } catch {
-    return [];
+    return { lines: [] };
   }
+}
+
+/** Samples per video frame when measuring loudness. */
+const Window = 800;
+
+/** The loudness of an audio file per video frame: RMS over each frame, scaled so the loudest is 1, to 2 decimals. */
+async function levels(file, seconds, fps) {
+  const args = ['-v', 'error', '-i', file, '-ac', '1', '-ar', String(fps * Window), '-f', 'f32le', '-'];
+  const { stdout } = await promisify(execFile)('ffmpeg', args, { encoding: 'buffer', maxBuffer: 1 << 30 });
+  const frames = Math.ceil(seconds * fps);
+  const rms = [];
+  for (let f = 0; f < frames; f++) {
+    let sum = 0;
+    for (let i = f * Window; i < (f + 1) * Window && (i + 1) * 4 <= stdout.length; i++) sum += stdout.readFloatLE(i * 4) ** 2;
+    rms.push(Math.sqrt(sum / Window));
+  }
+  const loudest = Math.max(...rms);
+  // A (near) silent line stays all zeros rather than amplifying noise.
+  return rms.map((r) => (loudest < 1e-4 ? 0 : Math.round((r / loudest) * 100) / 100));
 }
 
 /** The length in seconds of an audio file, from ffprobe. */

@@ -16,6 +16,7 @@ import { voice } from '../src/voice.js';
 
 const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audio file] [--root dir]
        cuadro voice <script.json> --provider p [--voice v] [--model m] [--out dir] [--base-url url]
+                   [--fps n]
        cuadro make "<prompt>" --provider p [--model m] [--out dir] [--rounds n] [--base-url url]
                    [--voice-provider p [--voice v]]
 
@@ -28,6 +29,7 @@ const usage = `usage: cuadro render <page.html> <out.mp4> [--props json] [--audi
   --model m      the provider's model (default: the provider's own)
   --out dir      where the audio files and voice.json go (default: voice)
   --base-url u   the provider's API address, to use another server
+  --fps n        frames per second of the loudness levels in voice.json (default: 30)
 
   make writes <out>/video.js and index.html, checked in Chromium:
   --provider p   anthropic, gemini or openai (or any compatible server)
@@ -50,7 +52,7 @@ try {
       props: { type: 'string' }, audio: { type: 'string' }, root: { type: 'string', default: '.' },
       provider: { type: 'string' }, voice: { type: 'string' }, model: { type: 'string' },
       out: { type: 'string' }, 'base-url': { type: 'string' },
-      rounds: { type: 'string' }, 'voice-provider': { type: 'string' },
+      rounds: { type: 'string' }, fps: { type: 'string' }, 'voice-provider': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -99,7 +101,7 @@ async function runVoice() {
   try {
     await voice({
       script: positionals[1], out: values.out, provider: values.provider, voice: values.voice,
-      model: values.model, baseUrl: values['base-url'],
+      model: values.model, baseUrl: values['base-url'], fps: values.fps === undefined ? undefined : Number(values.fps),
       onLine: ({ id, index, total, skipped }) => console.error(`line ${index + 1}/${total}  ${id}  ${skipped ? 'unchanged' : 'spoken'}`),
     });
   } catch (e) {
