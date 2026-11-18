@@ -92,7 +92,8 @@ npx cuadro render video.html out.mp4 --props '{"color":"teal"}' --audio song.mp3
 | `linear`, `ease`, `easeIn`, `easeOut`, `easeInOut`, `bezier(x1, y1, x2, y2)` | CSS's easing curves. |
 | `window.cuadro.setFrame(n)` | Shows frame `n`. Resolves once fonts are loaded and every `<img>` is decoded, and rejects if an image fails. |
 | `window.cuadro.clips` | The audio clips mounted so far, as `{ src, from, until, volume }` in composition frames. |
-| `render({ page, out, props, audio, root, onProgress })` | From `cuadro/render`, the Node API that the CLI calls. Use it in jobs. |
+| `render({ page, out, props, audio, root, workers, onProgress })` | From `cuadro/render`, the Node API that the CLI calls. Use it in jobs. `workers` tabs render at once (default: up to 4). |
+| `still({ page, out, frames, every, props, root, columns })` | From `cuadro/render`: renders only some frames, to a PNG. One frame is the PNG itself; several are a contact sheet, `columns` across. Without `frames`, one frame every `every` seconds (2). For design checks in seconds. |
 | spark's API | Re-exported, so a video needs only one import. |
 
 ### Scenes and themes
@@ -165,6 +166,14 @@ stage, so a code scene drawn with them scales like the rest.
 | `--props json` | Props merged over the composition's defaults. |
 | `--audio file` | A soundtrack, cut or padded with silence to the video's length. |
 | `--root dir` | The directory served to the browser (default `.`). The page must be inside it. |
+| `--workers n` | Tabs rendering frames at once (default: up to 4, and no more than the CPUs). The video is the same for any `n`. |
+
+| `cuadro still <page> <out.png>` | |
+|---|---|
+| `--frames 0,30,60` | The frames to render. One makes a PNG; several make one contact sheet. |
+| `--every 2s` | One frame every 2 seconds (the default), when `--frames` is not given. |
+| `--columns n` | Frames per row of the contact sheet (default: all, at most 4). |
+| `--props json`, `--root dir` | As for render. |
 
 Progress goes to stderr: one line that updates in a terminal, or about
 ten lines when the output goes to a log.
@@ -307,6 +316,12 @@ Nine ideas, a module each:
    graph), each delayed to its `from` and
    cut at its `until`, with `--audio` as one more clip at frame 0, and
    muxes the mix with the video copied as it is.
+   With `--workers n`, n tabs of the one Chromium each take the next
+   frame number, and a reorder buffer hands the frames to ffmpeg in
+   order, holding back a tab that gets too far ahead. Clips need every
+   frame seen in order (an `until` is set when a sequence unmounts), so an
+   extra tab walks all the frames without screenshots and its clips are
+   the ones mixed. `cuadro still` shows only the frames you name.
    [`bin/cuadro.js`](bin/cuadro.js) parses the command line and shows
    progress.
 7. **Narration is a cache** ([`src/voice.js`](src/voice.js), with
