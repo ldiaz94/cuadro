@@ -92,6 +92,7 @@ npx cuadro render video.html out.mp4 --props '{"color":"teal"}' --audio song.mp3
 | `linear`, `ease`, `easeIn`, `easeOut`, `easeInOut`, `bezier(x1, y1, x2, y2)` | CSS's easing curves. |
 | `window.cuadro.setFrame(n)` | Shows frame `n`. Resolves once fonts are loaded and every `<img>` is decoded, and rejects if an image fails. |
 | `window.cuadro.clips` | The audio clips mounted so far, as `{ src, from, until, volume }` in composition frames. |
+| `window.cuadro.captions` | Subtitles as `{ start, end, text }` in seconds. When a page sets them (the player does for a script with `captions`), `render` writes them beside the mp4 as an `.srt`. |
 | `render({ page, out, props, audio, root, workers, onProgress })` | From `cuadro/render`, the Node API that the CLI calls. Use it in jobs. `workers` tabs render at once (default: up to 4). |
 | `still({ page, out, frames, every, props, root, columns })` | From `cuadro/render`: renders only some frames, to a PNG. One frame is the PNG itself; several are a contact sheet, `columns` across. Without `frames`, one frame every `every` seconds (2). For design checks in seconds. |
 | spark's API | Re-exported, so a video needs only one import. |
@@ -138,10 +139,11 @@ add `?props={"theme":"bold"}` or `{"portrait":true}`.
 | `cuadro/scenes` | |
 |---|---|
 | `title({ length, kicker, title, sub })` | A kicker, the headline word by word, then a sub line. |
-| `kinetic({ length, lines })` | Two to four short lines, one per beat, each arriving below the last, which dims; progress bars below. |
+| `kinetic({ length, lines, words })` | Two to four short lines, one per beat, each arriving below the last, which dims; progress bars below. |
 | `stat({ length, title, stats })` | One to three `{ value, prefix, suffix, label }` numbers in rows, each counting up in its beat as a rule sweeps under it, while the others dim. |
-| `steps({ length, title, items })` | A list of `{ title, text }` with a highlight moving down it, the current step shown large beside it. |
-| `tiles({ length, title, items })` | Two to six `{ title, text }` tiles, with a highlight moving through them. |
+| `steps({ length, title, items, words })` | A list of `{ title, text }` with a highlight moving down it, the current step shown large beside it. |
+| `tiles({ length, title, items, words })` | Two to six `{ title, text }` tiles, with a highlight moving through them. |
+| `words` | Optional, in kinetic, steps and tiles: the narration line's words from voice.json. Each beat then starts as the line says its item (a word of the line or the item's title, give or take an ending), not on an even beat. |
 | `endCard({ length, logo, line, cta, url })` | A logo (an image URL) and a line, then a call to action and the URL from halfway, held to the last frame. |
 | `stage(theme, view)` | The themed frame, with a slowly drifting glow, and `view` on top. |
 | `play([length, view], ...)` | Scenes in order, each cross-fading into the next over `Fade` (12) frames. `playLength(...)` is its length. |
@@ -150,7 +152,7 @@ add `?props={"theme":"bold"}` or `{"portrait":true}`.
 
 | `cuadro/theme` | |
 |---|---|
-| `theme(name, { accent, accent2 })` | The custom properties of `'light'` (the default), `'bold'` or `'dark'`, with a brand's `#rrggbb` accents over them; the text on the accent turns dark or light to stay readable. Pass it to `stage`, or as any element's `style`. Loads the fonts. |
+| `theme(name, { accent, accent2 }, { font })` | The custom properties of `'light'` (the default), `'bold'` or `'dark'`, with a brand's `#rrggbb` accents over them; the text on the accent turns dark or light to stay readable. Pass it to `stage`, or as any element's `style`. Loads the fonts; `font`, a font file's URL, is the fallback for letters they lack. |
 | `themes` | Each theme's colours and fonts. |
 
 The properties are `--bg`, `--ink`, `--muted`, `--surface`, `--line`,
@@ -195,9 +197,21 @@ ELEVENLABS_API_KEY=... npx cuadro voice script.json --provider elevenlabs --voic
 ```
 
 This writes `voice/<id>.<ext>` for each line and `voice/voice.json`, a
-list of `{ id, file, seconds, hash }` (lengths come from ffprobe). A line is
-spoken again only when its text, provider, API address, voice or model changes, so
-editing one line costs one request. Options: `--provider` (required),
+list of `{ id, file, seconds, hash, levels, words, wordsFrom }` (lengths
+come from ffprobe). `levels` is the line's loudness, one 0-to-1 number
+per frame. `words` says when each word is said, `{ text, start, end }`
+in seconds from the line's start, and `wordsFrom` where that came from:
+the provider's own timings where it has them (ElevenLabs, from its
+per-character alignment), else `"estimate"`, a guess from the loudness
+(Gemini, OpenAI and Qwen give none). The guess finds the pauses, puts
+each at the nearest gap between words (a comma's, if it is about as
+near), and spreads the words between by their length; on Gemini's voice
+it lands within a word or so. A script's `language` (a BCP-47 code) goes
+to the providers that take one, ElevenLabs and Qwen; the others hear it
+in the text. A line is spoken again only when its text, provider, API
+address, voice, model or language changes, so editing one line costs one
+request; a cached line that lacks levels or words gains them with no
+request. Options: `--provider` (required),
 `--voice`, `--model`, `--out` (default `voice`) and `--base-url`. Progress
 goes to stderr. From Node, `voice({ script, out, provider, voice, model,
 baseUrl, onLine })` in `cuadro/voice` does the same.
@@ -239,6 +253,7 @@ out), or a code scene, a module of your own:
 { "theme": "dark",
   "brand": { "accent": "#ff7a59", "logo": "logo.svg" },
   "music": "music.wav",
+  "language": "en", "captions": true,
   "scenes": [
     { "type": "title", "props": { "title": "Notes that *find you*" }, "say": "Meet Lumen." },
     { "code": "scenes/wave.js", "say": "Just say it out loud, and it's saved." },
@@ -271,11 +286,33 @@ and the render cuts or pads it to the video's length. Paths in the script are
 relative to `script.json`. Render it like any page:
 `npx cuadro render index.html out.mp4`.
 
-A code scene's module exports a function that takes `{ length, levels,
-say, fps }` and returns a view, usually built with `scene()`. `levels`
-is its line's loudness from voice.json, one number per frame, for
-`level()`. [`demo/script`](demo/script) is a whole script with one code
+The player hands kinetic, steps and tiles their line's words, so a step
+lights up as the narrator names it. A code scene's module exports a
+function that takes `{ length, levels, words, say, fps }` and returns a
+view, usually built with `scene()`. `levels` is its line's loudness from
+voice.json, one number per frame, for `level(levels, frame)`, and `words`
+its words, for `word(words, frame, fps)`, the index of the word being
+said (both from `cuadro/level`). [`demo/script`](demo/script) is a whole script with one code
 scene, [`scenes/wave.js`](demo/script/scenes/wave.js).
+
+`captions: true` shows the narration at the bottom of the frame, a
+phrase at a time (cut after punctuation or at a pause, one line of at
+most 38 characters), with the word being said in the theme's accent, on
+a dark backdrop, at 39 px on a 720p frame. The scenes keep above that
+band. Render then also writes `out.srt` beside `out.mp4`, from the same
+timings. In a page of your own, `captions(words)` from `cuadro/captions`
+is the view (draw it inside `stage`, and give the stage `'--safe-bottom':
+CaptionBand` so the scenes keep clear), and `cues(words)` the phrases.
+
+`language` names the language the script is written in. The bundled
+fonts draw Latin-1 only (English, Spanish, Portuguese, French, German,
+Italian, Dutch and the like). A script with other letters on screen (or
+in its lines, with captions), say Greek, Cyrillic, Polish, Japanese,
+Arabic or Hindi, fails the check, naming the first such letter, unless
+it names a `font`: a font file relative to `script.json`, such as a Noto
+Sans woff2 for that script, which every font stack then falls back to.
+So text never comes out as empty boxes, nor in whatever font the
+machine has.
 
 `check(script)` in `cuadro/script` checks a script and names the bad
 path in its error: `scenes[2].props.items: expected an array`.
@@ -317,6 +354,9 @@ with status 3.
 the brand: the files are copied into the output folder as `logo.<ext>`
 and `music.<ext>`, and cuadro sets `brand` and `music` over every draft,
 so the model cannot drop them. The end card shows the logo.
+`--language es` has the model write the lines and the text on screen in
+that language, and sets the script's `language`, so the voice gets it
+too.
 
 The model's code runs on your machine, so the check keeps it in a small
 box: cuadro's server hands the page only the output folder, cuadro and
@@ -333,16 +373,36 @@ spark, and the tab may not load anything from another origin.
 lines into `<out>/voice` on every round (unchanged lines are not spoken
 again), so the scenes follow the lines' lengths. From Node, `make({
 prompt, provider, model, baseUrl, out, rounds, root, voiceProvider,
-voice, logo, brand: { accent, accent2 }, music, timeout, onStep })` in `cuadro/make` does the same, and resolves
+voice, logo, brand: { accent, accent2 }, music, language, timeout, onStep })` in `cuadro/make` does the same, and resolves
 to `{ page, file, reviewed }`, `file` being `script.json`.
 
 The result is a script: read it, edit it and commit it like any other.
 Every round is a paid request to the provider, and narration also pays
 for speech.
 
+### Translate a script
+
+```sh
+GEMINI_API_KEY=... npx cuadro translate script.json --to es --provider gemini
+npx cuadro voice script.es.json --provider gemini --out voice.es
+```
+
+`translate` sends the model the `say` lines and the designed scenes'
+text in one request, and writes `script.es.json` beside the script with
+the translations in place and `language` set. The rest stays as it is:
+the structure, the brand, numbers, logos, and the code scenes (only
+their lines are translated, not what they draw). The model is told to
+keep screen texts short, keep the `*marks*`, and word a screen text the
+way the line says it, so steps and tiles still light up on the spoken
+word. Play it with `player({ script: 'script.es.json', voice:
+'voice.es/voice.json' })`. It takes `--provider`, `--model` and
+`--base-url` as `make` does; from Node, `translate({ script, to,
+provider, model, baseUrl })` in `cuadro/translate` resolves to the new
+file's path.
+
 ## How it works
 
-Ten ideas, a module each:
+Twelve ideas, a module each:
 
 1. **Time is a signal** ([`src/composition.js`](src/composition.js)). The
    composition owns `frame`, and everything drawn is computed from it.
@@ -399,8 +459,9 @@ Ten ideas, a module each:
    bytes, with its key read from the environment. `post()` and `get()`
    add a timeout and retry on 429, 5xx and network errors (waiting at
    most a minute), and their errors quote the API's message but never a
-   header. `voice()` hashes provider, API address, voice, model and text
-   for each line and skips the lines whose hash and file are unchanged.
+   header. `voice()` hashes provider, API address, voice, model, text
+   and language for each line and skips the lines whose hash and file are
+   unchanged.
 8. **A prompt is a loop** ([`src/make.js`](src/make.js), with
    [`src/llm.js`](src/llm.js)). Each provider is a small `fetch` adapter
    that sends a conversation, with screenshots as PNG images, and returns
@@ -433,6 +494,24 @@ Ten ideas, a module each:
    line. The player is the only page: it imports the code scenes, hands
    each its line's levels, and plays everything with `play()`, with the
    music as one more `audio()` clip from frame 0.
+11. **Words are times** ([`src/timings.js`](src/timings.js), with
+   [`src/level.js`](src/level.js)). `Intl.Segmenter` cuts a line into
+   words in any language, also those written without spaces. A provider
+   with timings gives each word's first and last character's time;
+   otherwise the line's loudness, already measured per frame, is split
+   at its pauses, each pause is pinned to the nearest gap between words
+   (a comma's wins if close), and the words between pauses share the
+   voiced time by their length. So the times cost no request and come
+   out the same every run. In the page, `word()` is the last word started,
+   and a scene's beat starts as the first word matching its item is said.
+12. **Captions are phrases** ([`src/captions.js`](src/captions.js), with
+   [`src/translate.js`](src/translate.js)). The player moves each line's
+   words to where its scene plays, and `cues()` groups them: after a
+   sentence, after a comma once three words are in, at a pause, and long
+   clauses in even parts, so no word is left alone. One phrase list
+   draws the overlay and becomes `window.cuadro.captions`, which render
+   writes as `.srt`. A translation is one request for one JSON array of
+   the script's words, put back where each came from.
 
 ## Tests
 
@@ -489,6 +568,25 @@ others run in Chromium and ffmpeg against
   a code scene given its line's levels, and the demo script playing
   without errors; `cuadro voice` speaking a scene script's lines.
 
+- timings: words split with their punctuation, also in Japanese; a
+  pause pinned at the comma, the leading quiet skipped, a short dip not
+  taken for a pause, silence spread evenly; ElevenLabs' characters turned
+  into words. voice.json gets estimated words, keeps them cached, and
+  regains them with no request; ElevenLabs' own times win, and the
+  script's language goes to the provider and into the hash; Qwen names
+  the languages it knows.
+- captions: phrases cut at sentences, commas, pauses, and evenly when
+  long, joined without spaces in Japanese; each up until the next; the
+  `.srt` text. In the player, the phrase and the lit word at given
+  frames, a code scene given its words, `window.cuadro.captions`, and
+  the scenes kept above the band. Steps move to the item the narration
+  names, not on even beats.
+- translate, against a fake model: only the text is sent and replaced,
+  the brand, logos and code scenes stay, `language` is set and
+  `script.es.json` written; a reply of the wrong length fails. `make
+  --language` sets it and asks for it. The checker fails letters the
+  fonts lack unless a `font` is named.
+
 - scenes: beats tile each scene up to its fade-out, none under 15
   frames, and a too-short scene is refused; `playLength` counts the
   overlaps; a brand accent gets readable text on it, and bad theme names
@@ -502,7 +600,7 @@ others run in Chromium and ffmpeg against
 
 ## Size
 
-Lines of code, not counting blank lines or comments:
+Lines of code, not counting blank lines or comments, as `rloc` counts them:
 
 | module | lines |
 |---|---|
@@ -511,26 +609,30 @@ Lines of code, not counting blank lines or comments:
 | `src/composition.js` | 37 |
 | `src/audio.js` | 34 |
 | `src/preview.js` | 48 |
-| `src/render.js` | 105 |
+| `src/render.js` | 224 |
 | `src/serve.js` | 31 |
 | `src/chromium.js` | 25 |
 | `src/http.js` | 46 |
-| `src/speech.js` | 84 |
-| `src/voice.js` | 75 |
-| `src/llm.js` | 88 |
-| `src/make.js` | 330 |
-| `src/theme.js` | 55 |
-| `src/scenes.js` | 249 |
-| `src/script.js` | 89 |
-| `src/player.js` | 44 |
+| `src/speech.js` | 92 |
+| `src/voice.js` | 82 |
+| `src/timings.js` | 94 |
+| `src/llm.js` | 90 |
+| `src/make.js` | 361 |
+| `src/translate.js` | 58 |
+| `src/theme.js` | 58 |
+| `src/scenes.js` | 305 |
+| `src/script.js` | 108 |
+| `src/level.js` | 12 |
+| `src/captions.js` | 81 |
+| `src/player.js` | 56 |
 | `src/index.js` | 5 |
-| `bin/cuadro.js` | 130 |
-| **total** | **1549** |
+| `bin/cuadro.js` | 186 |
+| **total** | **2107** |
 
 `scenes.js` counts its stylesheet, about 85 lines of CSS. `make.js` counts its prompt, about 100 lines of text.
 
 The only dependencies are spark and playwright-core, plus ffmpeg from
-the system. Inter and Space Grotesk (Latin, 70 KB of woff2) ship in
+the system. Inter and Space Grotesk (Latin-1, 70 KB of woff2) ship in
 [`src/fonts`](src/fonts) under the SIL Open Font License.
 
 ## Left out
@@ -539,19 +641,30 @@ the system. Inter and Space Grotesk (Latin, 70 KB of woff2) ship in
   Frames are shot one at a time: on a laptop at 720p, about 25 a second
   for a simple page and 7 for the demo, which redraws a full-screen
   gradient on every frame.
-- Frame-exact embedded video clips, captions, and transparent video.
+- Frame-exact embedded video clips, and transparent video.
 - An embeddable React player. The preview is the page itself.
 - In scenes: transitions other than cross-fades, icons, images other
-  than the end card's logo, scene types no video has needed yet, and
-  letters outside the fonts' Latin subset. A theme has no easing (motion
+  than the end card's logo, and scene types no video has needed yet. A theme has no easing (motion
   is worked out in JS from the frame; CSS never animates) and no logo
   (cuadro waits for an `<img>`, not a CSS image, so the logo is a prop
   of the end card).
 - In `make`: writing a whole page instead of a script (0.3 did; a script
   with code scenes covers it and looks better), and editing an existing
   script.
-- In scripts: captions, music fades or ducking (the music sits at one
-  low volume), and scene layouts other than one after another.
+- In scripts: music fades or ducking (the music sits at one low
+  volume), and scene layouts other than one after another.
+- Fonts beyond Latin-1. Greek, Cyrillic, Latin Extended, CJK, Arabic and
+  Devanagari are not bundled (a subset of each would outweigh cuadro);
+  name a font file with the script's `font` instead, such as Noto Sans
+  JP, Arabic or Devanagari from Google Fonts (OFL). Without one, the
+  check fails rather than let text fall back to whatever the machine has.
+- Word times from speech recognition: whisper.cpp would need a model
+  file and an alignment of what it heard with the script's words. The
+  loudness estimate needs neither. Captions positioned anywhere but the
+  bottom, or styled other than by the theme.
+- In `translate`: what code scenes draw, and fitting the longer text of
+  some languages (a long Spanish headline can overflow a kinetic scene;
+  check the stills).
 - Waiting on anything except fonts and `<img>`: there is no "delay
   render" hook. CSS background images and fetched data must be ready
   before `composition` is called.
