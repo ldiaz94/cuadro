@@ -2,6 +2,7 @@
 // wrong declaration fails to type-check.
 import { composition, sequence, series, audio, interpolate, spring, easeOut, bezier, html, signal, type View } from 'cuadro';
 import { render } from 'cuadro/render';
+import { make } from 'cuadro/make';
 
 const dot: View = (frame) => html`<b>${() => interpolate(frame(), [0, 10], [0, 1], { easing: easeOut, extrapolate: { left: 'clamp', right: 'extend' } })}</b>`;
 const c = composition({
@@ -15,3 +16,4 @@ set((x) => x + 1);
 void c.setFrame(0);
 const from: number = c.clips[0].from;
 void render({ page: 'demo/index.html', out: 'out.mp4', props: { title: 'x' }, onProgress: (done: number, total: number) => {} });
+void make({ prompt: 'a box', provider: 'anthropic', rounds: 2, onStep: (m: string) => {} }).then(({ file }) => file.length);
