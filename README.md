@@ -230,14 +230,15 @@ which cuadro waits for.
 
 ### Scripts
 
-A script is a video written as data: a theme, a brand, and the scenes in
-order, each with the line the narrator says over it. A scene is one of
+A script is a video written as data: a theme, a brand, optional music,
+and the scenes in order, each with the line the narrator says over it. A scene is one of
 the designed scenes above, with its props (no `length`: cuadro works it
 out), or a code scene, a module of your own:
 
 ```json
 { "theme": "dark",
   "brand": { "accent": "#ff7a59", "logo": "logo.svg" },
+  "music": "music.wav",
   "scenes": [
     { "type": "title", "props": { "title": "Notes that *find you*" }, "say": "Meet Lumen." },
     { "code": "scenes/wave.js", "say": "Just say it out loud, and it's saved." },
@@ -264,7 +265,9 @@ makes each scene as long as its line plus two thirds of a second (a
 second and a half for the last), never shorter than 2 seconds or than
 its beats need. Without `voice/voice.json`, each type has its own length
 (4 to 6 seconds). The player plays each line from its scene's first
-frame and cross-fades the scenes with `play()`. Paths in the script are
+frame and cross-fades the scenes with `play()`. `music` plays from the
+first frame at a fifth of its volume (`MusicVolume`), under the narration,
+and the render cuts or pads it to the video's length. Paths in the script are
 relative to `script.json`. Render it like any page:
 `npx cuadro render index.html out.mp4`.
 
@@ -290,20 +293,30 @@ GEMINI_API_KEY=... npx cuadro make "a 30 second explainer for a bakery" --provid
 The model gets the script format, the scene catalogue (each scene's doc
 comment and props from `scenes.d.ts`, its limits from the checker), the
 themes, and the code-scene contract, and replies with `script.json` and
-a module for each code scene. It is told to prefer the designed scenes
-and to write code only for what they cannot show. cuadro checks the
+a module for each code scene. It is told to open with a hook, to put any
+number in a stat scene, to vary the layouts, to show key words rather
+than the narration, and to write code only for what the designed scenes
+cannot show. cuadro checks the
 script, writes it with an `index.html` into `--out` (default
 `make-out`, a folder inside the working directory), speaks its lines if
 there is a `--voice-provider`, and opens it in Chromium. A schema error,
 a page error, a failed frame, or a step that takes over 30 seconds goes
 back to the model to fix. A script that runs is sent back as stills
-for review, one per designed scene and three per code scene: the model answers `OK` or a better script; a
-review request that fails is asked once more. It stops at `OK` or after
-`--rounds` revisions (default 3), and keeps the last script that ran,
+for review, one per designed scene and three per code scene, with the bar
+"would a viewer notice this?": the model answers `OK`, or a numbered list
+of visible defects and a better script; a review request that fails is
+asked once more. It stops at `OK`, when a review lists the same defects
+as the one before, or after `--rounds` revisions (default 3), and keeps the last script that ran,
 also when a later reply or request fails. Progress goes to stderr, a line
 as each request starts; at the end it says how to preview and render the
-result. If the model never approved the script it kept (the review
-failed, or the rounds ran out), it says so and exits with status 3.
+result. If the model never said `OK` to the script it kept (the review
+failed, repeated itself, or the rounds ran out), it says so and exits
+with status 3.
+
+`--logo file`, `--brand "#rrggbb[,#rrggbb]"` and `--music file` give
+the brand: the files are copied into the output folder as `logo.<ext>`
+and `music.<ext>`, and cuadro sets `brand` and `music` over every draft,
+so the model cannot drop them. The end card shows the logo.
 
 The model's code runs on your machine, so the check keeps it in a small
 box: cuadro's server hands the page only the output folder, cuadro and
@@ -320,7 +333,7 @@ spark, and the tab may not load anything from another origin.
 lines into `<out>/voice` on every round (unchanged lines are not spoken
 again), so the scenes follow the lines' lengths. From Node, `make({
 prompt, provider, model, baseUrl, out, rounds, root, voiceProvider,
-voice, timeout, onStep })` in `cuadro/make` does the same, and resolves
+voice, logo, brand: { accent, accent2 }, music, timeout, onStep })` in `cuadro/make` does the same, and resolves
 to `{ page, file, reviewed }`, `file` being `script.json`.
 
 The result is a script: read it, edit it and commit it like any other.
@@ -397,7 +410,8 @@ Ten ideas, a module each:
    output folder and the two libraries, in a tab that may reach no
    other origin), shoots a still per scene (three for a code scene),
    and sends back either the problem or the stills for review, until
-   the model says `OK` or the rounds run out. Once a script has passed,
+   the model says `OK`, lists the same defects twice, or the rounds run
+   out. The given logo, colours and music are set over every draft. Once a script has passed,
    a later failure falls back to it. What the model learns about the scenes is read from
    `scenes.d.ts` and the checker's table, so it cannot drift from them.
 9. **A scene is a schedule** ([`src/scenes.js`](src/scenes.js), with
@@ -417,7 +431,8 @@ Ten ideas, a module each:
    a script against it and names the first bad path. `timing()` turns
    voice.json into scene lengths, so a scene is never shorter than its
    line. The player is the only page: it imports the code scenes, hands
-   each its line's levels, and plays everything with `play()`.
+   each its line's levels, and plays everything with `play()`, with the
+   music as one more `audio()` clip from frame 0.
 
 ## Tests
 
@@ -503,14 +518,14 @@ Lines of code, not counting blank lines or comments:
 | `src/speech.js` | 84 |
 | `src/voice.js` | 75 |
 | `src/llm.js` | 88 |
-| `src/make.js` | 282 |
+| `src/make.js` | 330 |
 | `src/theme.js` | 55 |
 | `src/scenes.js` | 249 |
-| `src/script.js` | 88 |
-| `src/player.js` | 41 |
+| `src/script.js` | 89 |
+| `src/player.js` | 44 |
 | `src/index.js` | 5 |
-| `bin/cuadro.js` | 120 |
-| **total** | **1487** |
+| `bin/cuadro.js` | 130 |
+| **total** | **1549** |
 
 `scenes.js` counts its stylesheet, about 85 lines of CSS. `make.js` counts its prompt, about 100 lines of text.
 
@@ -535,8 +550,8 @@ the system. Inter and Space Grotesk (Latin, 70 KB of woff2) ship in
 - In `make`: writing a whole page instead of a script (0.3 did; a script
   with code scenes covers it and looks better), and editing an existing
   script.
-- In scripts: music, captions, and scene layouts other than one after
-  another.
+- In scripts: captions, music fades or ducking (the music sits at one
+  low volume), and scene layouts other than one after another.
 - Waiting on anything except fonts and `<img>`: there is no "delay
   render" hook. CSS background images and fetched data must be ready
   before `composition` is called.
