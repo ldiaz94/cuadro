@@ -83,6 +83,12 @@ test('gemini: stateless steps, inline image, last model output', async () => {
   });
 });
 
+test('gemini: a reply without a model_output step says its status and steps', async () => {
+  process.env.GEMINI_API_KEY = 'kg';
+  const reply = { status: 'incomplete', steps: [{ type: 'thought' }] };
+  await assert.rejects(run({ body: JSON.stringify(reply) }, { provider: 'gemini' }), /no model_output step \(status incomplete; steps: thought\)/);
+});
+
 test('openai: system message, data URL image, refusal', async () => {
   process.env.OPENAI_API_KEY = 'k-openai'; // OpenAI's own key never goes to another host
   process.env.OPENAI_COMPAT_API_KEY = 'ko';

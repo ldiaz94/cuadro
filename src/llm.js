@@ -94,6 +94,7 @@ async function gemini({ model, system, messages, baseUrl = 'https://generativela
   });
   const json = await res.json();
   const last = (json.steps ?? []).filter((s) => s.type === 'model_output').at(-1);
+  if (!last) throw new Error(`gemini: no model_output step (status ${json.status}; steps: ${(json.steps ?? []).map((s) => s.type).join(', ') || 'none'})`);
   return reply('gemini', (last?.content ?? []).filter((p) => p.type === 'text').map((p) => p.text));
 }
 
